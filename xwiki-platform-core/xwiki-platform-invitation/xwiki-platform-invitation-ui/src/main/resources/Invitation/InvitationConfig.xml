@@ -20,7 +20,7 @@
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
 -->
 
-<xwikidoc version="1.4" reference="Invitation.InvitationConfig" locale="">
+<xwikidoc version="1.5" reference="Invitation.InvitationConfig" locale="">
   <web>Invitation</web>
   <name>InvitationConfig</name>
   <language/>
@@ -34,7 +34,7 @@
   <title/>
   <comment/>
   <minorEdit>false</minorEdit>
-  <syntaxId>xwiki/2.0</syntaxId>
+  <syntaxId>xwiki/2.1</syntaxId>
   <hidden>true</hidden>
   <content>{{velocity}}{{info}}$services.localization.render('xe.invitation.internalDocument', ['Invitation.WebHome']){{/info}}{{/velocity}}</content>
   <attachment>
@@ -420,7 +420,7 @@ $services.localization.render('xe.invitation.emailContent.reportMessage', ["&lt;
       <smtp_server_username/>
     </property>
     <property>
-      <subjectLineTemplate>{{velocity}}$services.localization.render('xe.invitation.emailContent.subjectLine', [$xcontext.getUser().replaceAll("^[^\.]*.", ""), $xwiki.getRequestURL().replaceAll("https?://([^/:]*).*$", "$1"), $!subjectLine]){{/velocity}}</subjectLineTemplate>
+      <subjectLineTemplate>{{velocity wiki='false'}}$services.localization.render('xe.invitation.emailContent.subjectLine', [$xcontext.getUser().replaceAll("^[^\.]*.", ""), $xwiki.getRequestURL().replaceAll("https?://([^/:]*).*$", "$1"), $!subjectLine]){{/velocity}}</subjectLineTemplate>
     </property>
     <property>
       <usersMayPersonalizeMessage>1</usersMayPersonalizeMessage>

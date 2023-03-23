@@ -149,18 +149,16 @@ import org.xwiki.observation.event.CancelableEvent;
 import org.xwiki.observation.event.Event;
 import org.xwiki.query.QueryException;
 import org.xwiki.query.QueryFilter;
-import org.xwiki.refactoring.ReferenceRenamer;
 import org.xwiki.refactoring.batch.BatchOperationExecutor;
+import org.xwiki.refactoring.internal.ReferenceUpdater;
 import org.xwiki.rendering.async.AsyncContext;
 import org.xwiki.rendering.block.Block;
 import org.xwiki.rendering.block.Block.Axes;
 import org.xwiki.rendering.block.MetaDataBlock;
-import org.xwiki.rendering.block.XDOM;
 import org.xwiki.rendering.block.match.MetadataBlockMatcher;
 import org.xwiki.rendering.internal.transformation.MutableRenderingContext;
 import org.xwiki.rendering.listener.MetaData;
 import org.xwiki.rendering.parser.ParseException;
-import org.xwiki.rendering.renderer.BlockRenderer;
 import org.xwiki.rendering.syntax.Syntax;
 import org.xwiki.rendering.syntax.SyntaxContent;
 import org.xwiki.rendering.transformation.RenderingContext;
@@ -472,6 +470,8 @@ public class XWiki implements EventListener
 
     private DocumentReferenceResolver<EntityReference> currentgetdocumentResolver;
 
+    private DocumentReferenceResolver<PageReference> currentPageDocumentResolver;
+
     private PageReferenceResolver<EntityReference> currentgetpageResolver;
 
     private AttachmentReferenceResolver<EntityReference> currentAttachmentReferenceResolver;
@@ -487,6 +487,8 @@ public class XWiki implements EventListener
     private AsyncContext asyncContext;
 
     private AuthorizationManager authorizationManager;
+
+    private ReferenceUpdater referenceUpdater;
 
     private ConfigurationSource getConfiguration()
     {
@@ -675,6 +677,15 @@ public class XWiki implements EventListener
         return this.currentgetdocumentResolver;
     }
 
+    private DocumentReferenceResolver<PageReference> getCurrentPageDocumentResolver()
+    {
+        if (this.currentPageDocumentResolver == null) {
+            this.currentPageDocumentResolver = Utils.getComponent(DocumentReferenceResolver.TYPE_PAGEREFERENCE, "current");
+        }
+
+        return this.currentPageDocumentResolver;
+    }
+
     private PageReferenceResolver<EntityReference> getCurrentGetPageResolver()
     {
         if (this.currentgetpageResolver == null) {
@@ -827,6 +838,15 @@ public class XWiki implements EventListener
         }
 
         return this.authorizationManager;
+    }
+
+    private ReferenceUpdater getReferenceUpdater()
+    {
+        if (this.referenceUpdater == null) {
+            this.referenceUpdater = Utils.getComponent(ReferenceUpdater.class);
+        }
+
+        return this.referenceUpdater;
     }
 
     private String localizePlainOrKey(String key, Object... parameters)
@@ -2261,19 +2281,16 @@ public class XWiki implements EventListener
      */
     public DocumentReference getDocumentReference(EntityReference reference, XWikiContext context)
     {
-        DocumentReference documentReference = getCurrentGetDocumentResolver().resolve(reference);
+        DocumentReference documentReference;
 
-        // If the document has been found or it's top level space, return the reference
-        if (documentReference.getParent().getParent().getType() != EntityType.SPACE
-            || exists(documentReference, context)) {
-            return documentReference;
+        if (reference.getType() == EntityType.PAGE || reference.getType().isAllowedAncestor(EntityType.PAGE)) {
+            documentReference =
+                getCurrentPageDocumentResolver().resolve(getCurrentGetPageResolver().resolve(reference));
+        } else {
+            documentReference = getCurrentGetDocumentResolver().resolve(reference);
         }
 
-        // Try final page
-        DocumentReference finalPageReference = new DocumentReference(documentReference.getParent().getName(),
-            documentReference.getParent().getParent(), documentReference.getParameters());
-
-        return exists(finalPageReference, context) ? finalPageReference : documentReference;
+        return documentReference;
     }
 
     /**
@@ -2929,16 +2946,6 @@ public class XWiki implements EventListener
     public String getSpacePreference(String preference, String defaultValue, XWikiContext context)
     {
         return getSpacePreference(preference, (SpaceReference) null, defaultValue, context);
-    }
-
-    /**
-     * @deprecated since 7.4M1, use {@link #getSpacePreference(String, SpaceReference, String, XWikiContext)} instead
-     */
-    @Deprecated
-    public String getSpacePreference(String preference, String space, String defaultValue, XWikiContext context)
-    {
-        return getSpacePreference(preference, new SpaceReference(space, context.getWikiReference()), defaultValue,
-            context);
     }
 
     /**
@@ -4687,7 +4694,6 @@ public class XWiki implements EventListener
      * @throws XWikiException
      * @since 13.6RC1
      */
-    @Unstable
     public void deleteDocumentVersions(XWikiDocument document, String version1, String version2, XWikiContext context)
         throws XWikiException
     {
@@ -4853,11 +4859,11 @@ public class XWiki implements EventListener
                         context.setWikiReference(wikiReference);
                     }
 
-                    // Step 4: For each child document, update its parent reference.
-                    // Step 5: For each backlink to rename, parse the backlink document and replace the links with
-                    // the new name.
-                    // Step 6: Refactor the relative links contained in the document to make sure they are relative
+                    // Step 4: Refactor the relative links contained in the document to make sure they are relative
                     // to the new document's location.
+                    // Step 5: For each child document, update its parent reference.
+                    // Step 6: For each backlink to rename, parse the backlink document and replace the links with
+                    // the new name.
                     this.updateLinksForRename(sourceDocument, targetDocumentReference, backlinkDocumentReferences,
                         childDocumentReferences, context);
                     result = true;
@@ -4890,6 +4896,10 @@ public class XWiki implements EventListener
         List<DocumentReference> backlinkDocumentReferences, List<DocumentReference> childDocumentReferences,
         XWikiContext context) throws XWikiException
     {
+        // Step 1: Refactor the relative links contained in the document to make sure they are relative to the new
+        // document's location.
+        getReferenceUpdater().update(newDocumentReference, sourceDoc.getDocumentReference(), newDocumentReference);
+
         // Step 2: For each child document, update its parent reference.
         if (childDocumentReferences != null) {
             for (DocumentReference childDocumentReference : childDocumentReferences) {
@@ -4914,30 +4924,6 @@ public class XWiki implements EventListener
                 XWikiDocument backlinkDocument = backlinkRootDocument.getTranslatedDocument(locale, context);
 
                 renameLinks(backlinkDocument, sourceDoc.getDocumentReference(), newDocumentReference, context);
-            }
-        }
-
-        // Get new document
-        XWikiDocument newDocument = getDocument(newDocumentReference, context);
-
-        // Step 4: Refactor the relative links contained in the document to make sure they are relative to the new
-        // document's location.
-        if (Utils.getContextComponentManager().hasComponent(BlockRenderer.class, sourceDoc.getSyntax().toIdString())) {
-            // Only support syntax for which a renderer is provided
-
-            ReferenceRenamer referenceRenamer = Utils.getComponent(ReferenceRenamer.class);
-
-            DocumentReference oldDocumentReference = sourceDoc.getDocumentReference();
-            XDOM newDocumentXDOM = newDocument.getXDOM();
-            boolean modified = referenceRenamer
-                .renameReferences(newDocumentXDOM, newDocumentReference, oldDocumentReference, newDocumentReference,
-                    false);
-
-            // Set the new content and save document if needed
-            if (modified) {
-                newDocument.setContent(newDocumentXDOM);
-                newDocument.setAuthorReference(context.getUserReference());
-                saveDocument(newDocument, context);
             }
         }
     }
@@ -5830,9 +5816,12 @@ public class XWiki implements EventListener
             context.put("tdoc", doc);
             context.put("cdoc", doc);
         } else {
-            context.put("doc", doc);
-            context.put("cdoc", doc);
-            vcontext.put("doc", doc.newDocument(context));
+            // Put a cloned document in the context so that it's not confused with the document coming from the document
+            // cache
+            XWikiDocument clonedDocument =  doc.clone();
+            context.setDoc(clonedDocument);
+            context.put("cdoc", clonedDocument);
+            vcontext.put("doc", clonedDocument.newDocument(context));
             vcontext.put("cdoc", vcontext.get("doc"));
             XWikiDocument tdoc;
 
@@ -5853,8 +5842,11 @@ public class XWiki implements EventListener
             } catch (Exception ex) {
                 // Invalid version, just use the most recent one
             }
-            context.put("tdoc", tdoc);
-            vcontext.put("tdoc", tdoc.newDocument(context));
+            // Put a cloned document in the context so that it's not confused with the document coming from the document
+            // cache
+            XWikiDocument clonedtdoc = tdoc == doc ? clonedDocument : tdoc.clone();
+            context.put("tdoc", clonedtdoc);
+            vcontext.put("tdoc", clonedtdoc.newDocument(context));
         }
 
         return true;
@@ -6519,12 +6511,22 @@ public class XWiki implements EventListener
      * @deprecated since 2.2.1 use {@link #exists(DocumentReference, XWikiContext)}
      */
     @Deprecated
-    public boolean exists(String fullname, XWikiContext context)
+    public boolean exists(String fullname, XWikiContext context) throws XWikiException
     {
         return exists(getCurrentMixedDocumentReferenceResolver().resolve(fullname), context);
     }
 
-    public boolean exists(DocumentReference documentReference, XWikiContext context)
+    /**
+     * Check if a document exist.
+     * <p>
+     * Since 14.9, if the check fail an exception is thrown.
+     * 
+     * @param documentReference the reference of the document
+     * @param context the XWiki context
+     * @return true if the document exist or false if it does not
+     * @throws XWikiException when failing to check document existence
+     */
+    public boolean exists(DocumentReference documentReference, XWikiContext context) throws XWikiException
     {
         String currentWiki = context.getWikiId();
 
@@ -6534,8 +6536,6 @@ public class XWiki implements EventListener
             context.setWikiId(documentReference.getWikiReference().getName());
 
             return getStore().exists(doc, context);
-        } catch (XWikiException e) {
-            return false;
         } finally {
             context.setWikiId(currentWiki);
         }
@@ -6543,14 +6543,16 @@ public class XWiki implements EventListener
 
     /**
      * Returns whether a page exists or not.
+     * <p>
+     * Since 14.9, if the check fail an exception is thrown.
      * 
      * @param reference the reference of the page to check for its existence
      * @return true if the page exists, false if not
+     * @throws XWikiException when failing to check page existence
      * @since 13.3RC1
      * @since 12.10.7
      */
-    @Unstable
-    public boolean exists(PageReference reference, XWikiContext context)
+    public boolean exists(PageReference reference, XWikiContext context) throws XWikiException
     {
         // Try as space
         DocumentReference documentReference = getCurrentReferenceDocumentReferenceResolver().resolve(reference);
@@ -7308,14 +7310,35 @@ public class XWiki implements EventListener
 
     }
 
-    public String getUniquePageName(String space, XWikiContext context)
+    /**
+     * Generates a unique page name based on initial page name and already existing pages.
+     * <p>
+     * Since 14.9, if the document exist check fail an exception is thrown.
+     * 
+     * @param space the space where to add a new document
+     * @param context the XWiki context
+     * @return a unique document name
+     * @throws XWikiException when failing to check document existence
+     */
+    public String getUniquePageName(String space, XWikiContext context) throws XWikiException
     {
         String pageName = generateRandomString(16);
 
         return getUniquePageName(space, pageName, context);
     }
 
-    public String getUniquePageName(String space, String name, XWikiContext context)
+    /**
+     * Generates a unique page name based on initial page name and already existing pages.
+     * <p>
+     * Since 14.9, if the document exist check fail an exception is thrown.
+     * 
+     * @param space the space where to add a new document
+     * @param name the prefix of the document name
+     * @param context the XWiki context
+     * @return a unique document name
+     * @throws XWikiException when failing to check document existence
+     */
+    public String getUniquePageName(String space, String name, XWikiContext context) throws XWikiException
     {
         String pageName = clearName(name, context);
         if (exists(space + "." + pageName, context)) {
@@ -7615,9 +7638,16 @@ public class XWiki implements EventListener
 
         document.apply(rolledbackDoc);
 
-        // Prepare the XWikiDocument before save
+        // Prepare the XWikiDocument before save.
         document.setAuthorReference(xcontext.getUserReference());
         document.setContentAuthorReference(xcontext.getUserReference());
+
+        // Note: In the case where we don't add a new revision, there'll be no new entry in the history and thus
+        // the author displayed for the current document must be the same as the last revision in the history. Set
+        // the original metadata author to reflect this.
+        if (!addRevision) {
+            document.getAuthors().setOriginalMetadataAuthor(rolledbackDoc.getAuthors().getOriginalMetadataAuthor());
+        }
 
         // Make sure the history is not modified if addRevision is disabled
         String message;

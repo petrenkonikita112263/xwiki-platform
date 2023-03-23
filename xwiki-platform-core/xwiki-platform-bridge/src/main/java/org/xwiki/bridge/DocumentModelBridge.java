@@ -165,7 +165,6 @@ public interface DocumentModelBridge
      * @since 12.10.5
      * @since 12.6.8
      */
-    @Unstable
     default Boolean isHidden()
     {
         return false;
@@ -179,5 +178,16 @@ public interface DocumentModelBridge
     default Date getDate()
     {
         return null;
+    }
+
+    /**
+     * @return {@code true} if the document is restricted, i.e., transformations should be executed in restricted mode
+     * @since 15.2RC1
+     * @since 14.10.7
+     */
+    @Unstable
+    default boolean isRestricted()
+    {
+        return false;
     }
 }

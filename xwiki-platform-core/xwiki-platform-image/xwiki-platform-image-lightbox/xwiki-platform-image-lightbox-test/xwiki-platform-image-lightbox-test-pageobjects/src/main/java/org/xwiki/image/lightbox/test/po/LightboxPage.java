@@ -27,7 +27,8 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.TimeoutException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
-import org.xwiki.test.ui.po.AttachmentsPane;
+import org.xwiki.flamingo.skin.test.po.AttachmentsPane;
+import org.xwiki.flamingo.skin.test.po.AttachmentsViewPage;
 import org.xwiki.test.ui.po.ViewPage;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -40,19 +41,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class LightboxPage extends ViewPage
 {
-    public Optional<ImagePopover> hoverImage(int index)
+    /**
+     * Hovers on an image until the popover is displayed. We don't wait for a popover to be displayed, because we don't
+     * know if the feature is activated. If you want to make sure that a popover is displayed after the hover, you
+     * should call {@link ImagePopover#waitUntilReady()} before calling any other method of {@link ImagePopover}.
+     *
+     * @param index the index of the image on the content page, starting at 0
+     * @return an {@link ImagePopover} page object
+     */
+    public ImagePopover hoverImage(int index)
     {
-        try {
-            WebElement image = getImageElement(index);
-            assertTrue(image.isDisplayed());
+        WebElement image = getImageElement(index);
+        assertTrue(image.isDisplayed());
 
-            Actions action = new Actions(getDriver().getWrappedDriver());
-            action.moveToElement(image).build().perform();
+        Actions action = new Actions(getDriver().getWrappedDriver());
+        action.moveToElement(image).build().perform();
 
-            return Optional.of(new ImagePopover());
-        } catch (TimeoutException e) {
-            return Optional.empty();
-        }
+        return new ImagePopover();
     }
 
     public WebElement getImageElement(int index)
@@ -71,7 +76,7 @@ public class LightboxPage extends ViewPage
      */
     public Lightbox openLightboxAtImage(int index)
     {
-        return hoverImage(index).get().openLightbox();
+        return hoverImage(index).waitUntilReady().openLightbox();
     }
 
     private File getFileToUpload(String testResourcePath, String filename)
@@ -81,7 +86,7 @@ public class LightboxPage extends ViewPage
 
     public String attachFile(String testResourcePath, String image)
     {
-        AttachmentsPane attachmentsPane = this.openAttachmentsDocExtraPane();
+        AttachmentsPane attachmentsPane = new AttachmentsViewPage().openAttachmentsDocExtraPane();
         attachmentsPane.setFileToUpload(getFileToUpload(testResourcePath, image).getAbsolutePath());
         attachmentsPane.waitForUploadToFinish(image);
         assertTrue(attachmentsPane.attachmentExistsByFileName(image));

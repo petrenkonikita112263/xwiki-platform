@@ -34,7 +34,8 @@ define('xwiki-lightbox-description', [
   'jquery',
   'xwiki-l10n!xwiki-lightbox-messages',
   'moment',
-  'moment-jdateformatparser'
+  'moment-jdateformatparser',
+  'moment-timezone'
 ], function($, l10n, moment) {
   var _cachedAttachments = {};
 
@@ -93,8 +94,11 @@ define('xwiki-lightbox-description', [
     }
 
     if (attachmentData.date) {
-      var dateFormat = moment().toMomentFormatString($('.lightboxDescription .date').attr('data-dateFormat'));
-      $('.lightboxDescription .date').text(l10n.get('date', moment(attachmentData.date).format(dateFormat)));
+      // This should be updated after fixing XWIKI-19808: Proper javascript API to perform Date Formatting.
+      var dateFormat = moment().toMomentFormatString($('.lightboxDescription .date').data('dateFormat'));
+      var timezone = $('.lightboxDescription .date').data('userTimeZone');
+      $('.lightboxDescription .date')
+        .text(l10n.get('date', moment(attachmentData.date).tz(timezone).format(dateFormat)));
     }
   };
 
@@ -173,17 +177,21 @@ define('xwiki-lightbox', [
    * Make sure that the toolbar will remain open also while hovering it, not just the image.
    */
   var keepToolbarOpenOnHover = function() {
+    var hideTimeout;
     // Hide the image popover after 3 seconds (if the mouse doesn't enter the popover).
-    var hideTimeout = setTimeout(function() {
+    hideTimeout = setTimeout(function() {
       $('#imagePopoverContainer').popover('hide');
     }, 3000);
     // Don't hide the image popover when the mouse is over it.
     $('#imagePopoverContainer .popover').on('mouseenter', function() {
       clearTimeout(hideTimeout);
     });
-    // Hide the image popover when the mouse leaves its area.
+    // Hide the image popover when the mouse leaves its area, but with a delay since it's easy to go out
+    // without wanting to (e.g. when going diagonally towards the image popover, to click on the anchor button).
     $('#imagePopoverContainer .popover').on('mouseleave', function() {
-      $(this).popover('hide');
+      hideTimeout = setTimeout(function() {
+        $('#imagePopoverContainer').popover('hide');
+      }, 500);
     });
     return hideTimeout;
   };
@@ -217,6 +225,9 @@ define('xwiki-lightbox', [
       // Remember the index of the image to show first.
       $('.openLightbox').data('index', [...lightboxImages].indexOf(img));
     }).on('inserted.bs.popover', function() {
+      // Move the popover 2 pixels below, in order to still have the cursor over the image when the popover is
+      // displayed.
+      $(this).css('top', $(this).position().top + 2 +'px');
       var img = $("#imagePopoverContainer").data('target');
       $('.popover .imageDownload').attr('href', img.src);
       $('.popover .imageDownload').attr('download', getImageName(img.src));
@@ -232,13 +243,12 @@ define('xwiki-lightbox', [
       clearTimeout(hideTimeout);
       popoverContainer.data('target', e.target);
     }).on('mousemove', function(e) {
-      popoverContainer.popover('hide');
       // Delay to show the popover until the mouse stops moving.
       clearTimeout(showTimeout);
       showTimeout = setTimeout(function() {
         popoverContainer.css({top: e.pageY, left: e.pageX });
         popoverContainer.popover('show');
-      }, 400);
+      }, 500);
     }).on('mouseleave', function() {
       clearTimeout(showTimeout);
       hideTimeout = keepToolbarOpenOnHover();

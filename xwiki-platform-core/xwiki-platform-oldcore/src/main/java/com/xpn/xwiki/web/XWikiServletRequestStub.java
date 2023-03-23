@@ -24,14 +24,20 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URL;
 import java.security.Principal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
 import java.util.Vector;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.servlet.AsyncContext;
 import javax.servlet.DispatcherType;
@@ -58,6 +64,102 @@ import org.apache.commons.lang3.ArrayUtils;
  */
 public class XWikiServletRequestStub implements XWikiRequest
 {
+    /**
+     * Builder for {@link XWikiServletRequestStub}.
+     * 
+     * @version $Id$
+     * @since 14.10
+     */
+    public static class Builder
+    {
+        private URL requestURL;
+
+        private String contextPath;
+
+        private Map<String, String[]> requestParameters;
+
+        private Map<String, List<String>> headers;
+
+        private Cookie[] cookies;
+
+        private String remoteAddr;
+
+        /**
+         * Default constructor.
+         */
+        public Builder()
+        {
+        }
+
+        /**
+         * @param requestURL the request URL
+         * @return this builder
+         */
+        public Builder setRequestURL(URL requestURL)
+        {
+            this.requestURL = requestURL;
+            return this;
+        }
+
+        /**
+         * @param contextPath the context path
+         * @return this builder
+         */
+        public Builder setContextPath(String contextPath)
+        {
+            this.contextPath = contextPath;
+            return this;
+        }
+
+        /**
+         * @param requestParameters the request parameters
+         * @return this builder
+         */
+        public Builder setRequestParameters(Map<String, String[]> requestParameters)
+        {
+            this.requestParameters = requestParameters;
+            return this;
+        }
+
+        /**
+         * @param headers the request headers
+         * @return this builder
+         */
+        public Builder setHeaders(Map<String, List<String>> headers)
+        {
+            this.headers = headers;
+            return this;
+        }
+
+        /**
+         * @param cookies the request cookies
+         * @return this builder
+         */
+        public Builder setCookies(Cookie[] cookies)
+        {
+            this.cookies = cookies;
+            return this;
+        }
+
+        /**
+         * @param remoteAddr the remote address
+         * @return this builder
+         */
+        public Builder setRemoteAddr(String remoteAddr)
+        {
+            this.remoteAddr = remoteAddr;
+            return this;
+        }
+
+        /**
+         * @return the built {@link XWikiServletRequestStub} instance
+         */
+        public XWikiServletRequestStub build()
+        {
+            return new XWikiServletRequestStub(this);
+        }
+    }
+
     private boolean secure;
 
     private String scheme;
@@ -74,15 +176,19 @@ public class XWikiServletRequestStub implements XWikiRequest
 
     private int serverPort;
 
-    private Vector<String> headerNames;
-
-    private Map<String, Vector<String>> headers;
+    private Map<String, List<String>> headers;
 
     private Map<String, String[]> parameters;
+
+    private Cookie[] cookies;
+
+    private List<Part> parts = new ArrayList<>();
 
     private String requestURI;
 
     private StringBuffer requestURL;
+
+    private String remoteAddr;
 
     private boolean daemon = true;
 
@@ -90,9 +196,35 @@ public class XWikiServletRequestStub implements XWikiRequest
     {
     }
 
+    private XWikiServletRequestStub(Builder builder)
+    {
+        if (builder.requestURL != null) {
+            this.protocol = builder.requestURL.getProtocol();
+            this.scheme = builder.requestURL.getProtocol();
+
+            this.serverName = builder.requestURL.getHost();
+            this.serverPort = builder.requestURL.getPort();
+
+            this.secure = this.protocol.equalsIgnoreCase("https");
+
+            this.requestURI = builder.requestURL.getPath();
+            this.requestURL = new StringBuffer(builder.requestURL.toString());
+
+            setHost(builder.requestURL.getHost());
+        }
+
+        this.contextPath = builder.contextPath;
+        this.parameters = clone(builder.requestParameters);
+        this.headers = cloneHeaders(builder.headers);
+        this.cookies = clone(builder.cookies);
+        this.remoteAddr = builder.remoteAddr;
+    }
+
     /**
      * @since 8.4RC1
+     * @deprecated use the dedicated {@link Builder} instead
      */
+    @Deprecated
     public XWikiServletRequestStub(URL requestURL, Map<String, String[]> requestParameters)
     {
         this(requestURL, null, requestParameters);
@@ -101,27 +233,25 @@ public class XWikiServletRequestStub implements XWikiRequest
     /**
      * @since 10.11.1
      * @since 11.0
+     * @deprecated use the dedicated {@link Builder} instead
      */
+    @Deprecated
     public XWikiServletRequestStub(URL requestURL, String contextPath, Map<String, String[]> requestParameters)
     {
-        if (requestURL != null) {
-            this.protocol = requestURL.getProtocol();
-            this.scheme = requestURL.getProtocol();
+        this(requestURL, contextPath, requestParameters, new Cookie[0]);
+    }
 
-            this.serverName = requestURL.getHost();
-            this.serverPort = requestURL.getPort();
-
-            this.secure = this.protocol.equalsIgnoreCase("https");
-
-            this.requestURI = requestURL.getPath();
-            this.requestURL = new StringBuffer(requestURL.toString());
-
-            setHost(requestURL.getHost());
-        }
-
-        this.contextPath = contextPath;
-
-        this.parameters = clone(requestParameters);
+    /**
+     * @since 14.4.2
+     * @since 14.5
+     * @deprecated use the dedicated {@link Builder} instead
+     */
+    @Deprecated
+    public XWikiServletRequestStub(URL requestURL, String contextPath, Map<String, String[]> requestParameters,
+        Cookie[] cookies)
+    {
+        this(new Builder().setRequestURL(requestURL).setContextPath(contextPath).setRequestParameters(requestParameters)
+            .setCookies(cookies));
     }
 
     /**
@@ -144,23 +274,20 @@ public class XWikiServletRequestStub implements XWikiRequest
         this.requestURI = request.getRequestURI();
         this.requestURL = new StringBuffer(request.getRequestURL());
 
-        this.headerNames = new Vector<>();
-        this.headers = new LinkedHashMap<>();
-        for (Enumeration<String> enumeration = request.getHeaderNames(); enumeration.hasMoreElements();) {
-            String headerName = enumeration.nextElement();
-
-            this.headerNames.addElement(headerName);
-            Vector<String> values = new Vector<>();
-            for (Enumeration<String> e2 = request.getHeaders(headerName); e2.hasMoreElements();) {
-                values.addElement(e2.nextElement());
-            }
-            this.headers.put(headerName.toLowerCase(), values);
+        if (request.getHeaderNames() != null) {
+            this.headers = Collections.list(request.getHeaderNames()).stream()
+                .map(headerName -> Map.entry(headerName, Collections.list(request.getHeaders(headerName))))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (left, right) -> right,
+                    () -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER)));
         }
 
         this.parameters = clone(request.getParameterMap());
+        this.cookies = clone(request.getCookies());
+        this.remoteAddr = request.getRemoteAddr();
 
         if (request instanceof XWikiServletRequestStub) {
             this.daemon = ((XWikiServletRequestStub) request).daemon;
+            this.parts = new ArrayList<>(((XWikiServletRequestStub) request).parts);
         }
     }
 
@@ -177,6 +304,27 @@ public class XWikiServletRequestStub implements XWikiRequest
         }
 
         return clone;
+    }
+
+    private Map<String, List<String>> cloneHeaders(Map<String, List<String>> headers)
+    {
+        if (headers == null) {
+            return null;
+        }
+
+        return headers.entrySet().stream().filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
+            .map(entry -> Map.entry(entry.getKey(), entry.getValue().stream().collect(Collectors.toList())))
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (left, right) -> right,
+                () -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER)));
+    }
+
+    private Cookie[] clone(Cookie[] cookies)
+    {
+        if (cookies != null) {
+            return Stream.of(cookies).map(Cookie::clone).toArray(Cookie[]::new);
+        } else {
+            return null;
+        }
     }
 
     public void setContextPath(String contextPath)
@@ -225,13 +373,13 @@ public class XWikiServletRequestStub implements XWikiRequest
     }
 
     @Override
-    public String getHeader(String s)
+    public String getHeader(String headerName)
     {
         if (this.headers != null) {
-            Vector<String> values = this.headers.get(s.toLowerCase());
+            List<String> values = this.headers.get(headerName);
 
-            if (values != null) {
-                values.get(0);
+            if (values != null && !values.isEmpty()) {
+                return values.get(0);
             }
         }
 
@@ -249,7 +397,7 @@ public class XWikiServletRequestStub implements XWikiRequest
 
         String[] values = this.parameters.get(key);
         if (values == null) {
-            values = new String[] { value };
+            values = new String[] {value};
         } else {
             values = ArrayUtils.add(values, value);
         }
@@ -271,7 +419,12 @@ public class XWikiServletRequestStub implements XWikiRequest
     @Override
     public Cookie getCookie(String cookieName)
     {
-        return null;
+        if (this.cookies != null) {
+            return Stream.of(this.cookies).filter(cookie -> Objects.equals(cookieName, cookie.getName())).findFirst()
+                .orElse(null);
+        } else {
+            return null;
+        }
     }
 
     @Override
@@ -283,7 +436,7 @@ public class XWikiServletRequestStub implements XWikiRequest
     @Override
     public Cookie[] getCookies()
     {
-        return new Cookie[0];
+        return clone(this.cookies);
     }
 
     @Override
@@ -293,13 +446,13 @@ public class XWikiServletRequestStub implements XWikiRequest
     }
 
     @Override
-    public Enumeration<String> getHeaders(String s)
+    public Enumeration<String> getHeaders(String headerName)
     {
         if (this.headers != null) {
-            Vector<String> values = this.headers.get(s.toLowerCase());
+            List<String> values = this.headers.get(headerName);
 
             if (values != null) {
-                return values.elements();
+                return Collections.enumeration(values);
             }
         }
 
@@ -309,7 +462,7 @@ public class XWikiServletRequestStub implements XWikiRequest
     @Override
     public Enumeration<String> getHeaderNames()
     {
-        return this.headerNames != null ? this.headerNames.elements() : Collections.emptyEnumeration();
+        return this.headers != null ? Collections.enumeration(this.headers.keySet()) : Collections.emptyEnumeration();
     }
 
     @Override
@@ -557,7 +710,7 @@ public class XWikiServletRequestStub implements XWikiRequest
     @Override
     public String getRemoteAddr()
     {
-        return null;
+        return this.remoteAddr;
     }
 
     @Override
@@ -656,13 +809,16 @@ public class XWikiServletRequestStub implements XWikiRequest
     @Override
     public Collection<Part> getParts() throws IOException, ServletException
     {
-        return null;
+        return this.parts;
     }
 
     @Override
     public Part getPart(String s) throws IOException, ServletException
     {
-        return null;
+        return this.parts.stream()
+            .filter(part -> Objects.equals(part.getName(), s))
+            .findFirst()
+            .orElse(null);
     }
 
     @Override

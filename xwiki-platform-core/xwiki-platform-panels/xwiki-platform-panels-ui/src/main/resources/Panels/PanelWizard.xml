@@ -29,7 +29,6 @@
   <creator>xwiki:XWiki.Admin</creator>
   <parent>Panels.WebHome</parent>
   <author>xwiki:XWiki.Admin</author>
-  <originalMetadataAuthor>xwiki:XWiki.Admin</originalMetadataAuthor>
   <contentAuthor>xwiki:XWiki.Admin</contentAuthor>
   <version>1.1</version>
   <title>$services.localization.render('panelwizard.panelwizard')</title>
@@ -80,10 +79,7 @@
 
 {{velocity output="false"}}
 #macro (displayConfigPropertyValue $propName $action)
-  #set ($output = $doc.display($propName, $action))
-  #set ($output = $stringtool.removeStart($output, '{{html clean="false" wiki="false"}}'))
-  #set ($output = $stringtool.removeEnd($output, '{{/html}}'))
-  $output
+  #unwrapXPropertyDisplay($doc.display($propName, $action))
 #end
 
 #macro (displayPageLayoutSection)

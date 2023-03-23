@@ -67,13 +67,6 @@ public class ViewPage extends BasePage
         return new HistoryPane();
     }
 
-    public AttachmentsPane openAttachmentsDocExtraPane()
-    {
-        getDriver().findElement(By.id("Attachmentslink")).click();
-        waitForDocExtraPaneActive("attachments");
-        return new AttachmentsPane();
-    }
-
     public InformationPane openInformationDocExtraPane()
     {
         getDriver().findElement(By.id("Informationlink")).click();
@@ -264,16 +257,10 @@ public class ViewPage extends BasePage
         getDriver().scrollTo(0, 0);
     }
 
-    private void useShortcutForDocExtraPane(String shortcut, String pane)
+    protected void useShortcutForDocExtraPane(String shortcut, String pane)
     {
         getDriver().createActions().sendKeys(shortcut).perform();
         waitForDocExtraPaneActive(pane);
-    }
-
-    public AttachmentsPane useShortcutKeyForAttachmentPane()
-    {
-        useShortcutForDocExtraPane("a", "attachments");
-        return new AttachmentsPane();
     }
 
     public HistoryPane useShortcutKeyForHistoryPane()
@@ -312,5 +299,14 @@ public class ViewPage extends BasePage
     private String getElementCSSValue(By locator, String attribute)
     {
         return getDriver().findElement(locator).getCssValue(attribute);
+    }
+
+    /**
+     * @return the last modified text displayed under the title in a wiki page
+     * @since 15.1RC1
+     */
+    public String getLastModifiedText()
+    {
+        return getDriver().findElement(By.className("xdocLastModification")).getText();
     }
 }

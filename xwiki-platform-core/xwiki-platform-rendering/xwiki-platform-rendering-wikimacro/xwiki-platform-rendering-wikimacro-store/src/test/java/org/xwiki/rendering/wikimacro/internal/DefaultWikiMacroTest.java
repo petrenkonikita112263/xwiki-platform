@@ -26,6 +26,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import java.util.Set;
 
 import org.apache.velocity.VelocityContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -159,9 +160,10 @@ class DefaultWikiMacroTest
         DefaultContentDescriptor contentDescriptor, List<WikiMacroParameterDescriptor> parameterDescriptors)
         throws Exception
     {
+        // TOOD: add a test with defaultCategory and move this test to legacy
         WikiMacroDescriptor descriptor =
             new WikiMacroDescriptor.Builder().id(new MacroId(macroId)).name("Wiki Macro").description("Description")
-                .defaultCategory("Test").visibility(WikiMacroVisibility.GLOBAL).supportsInlineMode(true)
+                .defaultCategories(Set.of("Test")).visibility(WikiMacroVisibility.GLOBAL).supportsInlineMode(true)
                 .contentDescriptor(contentDescriptor).parameterDescriptors(parameterDescriptors).build();
 
         this.wikiMacroDocument.setSyntax(syntax);
@@ -251,7 +253,9 @@ class DefaultWikiMacroTest
 
         assertXHTML(
             "<h1 id=\"Hheading\" class=\"wikigeneratedid\"><span>heading</span></h1>"
-                + "<ul><li><span class=\"wikilink\"><a href=\"#Hheading\">heading</a></span></li></ul>",
+                + "<ul class=\"wikitoc\">"
+                + "<li><span class=\"wikilink\"><a href=\"#Hheading\">heading</a></span></li>"
+                + "</ul>",
             "= heading\n\n{{wikimacro1 param1=\"value1\" param2=\"value2\"/}}");
     }
 

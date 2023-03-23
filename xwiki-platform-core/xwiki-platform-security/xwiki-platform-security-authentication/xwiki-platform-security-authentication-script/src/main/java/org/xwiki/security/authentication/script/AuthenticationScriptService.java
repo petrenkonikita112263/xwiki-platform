@@ -45,6 +45,8 @@ import org.xwiki.security.authentication.AuthenticationFailureStrategy;
 import org.xwiki.security.authentication.AuthenticationResourceReference;
 import org.xwiki.security.authentication.ResetPasswordException;
 import org.xwiki.security.authentication.ResetPasswordManager;
+import org.xwiki.security.authentication.RetrieveUsernameException;
+import org.xwiki.security.authentication.RetrieveUsernameManager;
 import org.xwiki.security.authorization.ContextualAuthorizationManager;
 import org.xwiki.security.authorization.Right;
 import org.xwiki.security.script.SecurityScriptService;
@@ -91,6 +93,9 @@ public class AuthenticationScriptService implements ScriptService
 
     @Inject
     private ResetPasswordManager resetPasswordManager;
+
+    @Inject
+    private RetrieveUsernameManager retrieveUsernameManager;
 
     @Inject
     @Named("contextpath")
@@ -160,14 +165,14 @@ public class AuthenticationScriptService implements ScriptService
      * @return a relative URL for the current wiki or {@code null} if an error occurs.
      * @since 13.1RC1
      */
-    @Unstable
     public String getAuthenticationURL(String action, Map<String, Object> params)
     {
         try {
             AuthenticationAction authenticationAction = AuthenticationAction.getFromRequestParameter(action);
 
-            AuthenticationResourceReference resourceReference =
-                new AuthenticationResourceReference(authenticationAction);
+            AuthenticationResourceReference resourceReference = new AuthenticationResourceReference(
+                this.contextProvider.get().getWikiReference(),
+                authenticationAction);
             if (params != null) {
                 for (Map.Entry<String, Object> entry : params.entrySet()) {
                     resourceReference.addParameter(entry.getKey(), entry.getValue());
@@ -192,7 +197,6 @@ public class AuthenticationScriptService implements ScriptService
      * @throws ResetPasswordException if any error occurs for performing the reset password request.
      * @since 13.1RC1
      */
-    @Unstable
     public void requestResetPassword(UserReference user) throws ResetPasswordException
     {
         if (this.authorizationManager.hasAccess(Right.PROGRAM)) {
@@ -215,7 +219,6 @@ public class AuthenticationScriptService implements ScriptService
      * @throws ResetPasswordException if the code is not correct or if an error occurs.
      * @since 13.1RC1
      */
-    @Unstable
     public String checkVerificationCode(UserReference user, String verificationCode)
         throws ResetPasswordException
     {
@@ -232,11 +235,28 @@ public class AuthenticationScriptService implements ScriptService
      * @throws ResetPasswordException if the verification code is wrong, or if an error occurs.
      * @since 13.1RC1
      */
-    @Unstable
     public void resetPassword(UserReference user, String verificationCode, String newPassword)
         throws ResetPasswordException
     {
         this.resetPasswordManager.checkVerificationCode(user, verificationCode);
         this.resetPasswordManager.resetPassword(user, newPassword);
+    }
+
+    /**
+     * Retrieve users information associated to the given email address and send them by email.
+     *
+     * @param userEmail the email address for which to find associated accounts
+     * @throws RetrieveUsernameException in case of problem for finding the information or for sending the email
+     * @since 14.9
+     * @since 13.10.10
+     * @since 14.4.6
+     */
+    @Unstable
+    public void retrieveUsernameAndSendEmail(String userEmail) throws RetrieveUsernameException
+    {
+        Set<UserReference> users = this.retrieveUsernameManager.findUsers(userEmail);
+        if (!users.isEmpty()) {
+            this.retrieveUsernameManager.sendRetrieveUsernameEmail(userEmail, users);
+        }
     }
 }

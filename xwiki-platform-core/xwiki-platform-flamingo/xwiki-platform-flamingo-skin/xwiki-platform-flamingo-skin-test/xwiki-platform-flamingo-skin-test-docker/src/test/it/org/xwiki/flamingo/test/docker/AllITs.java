@@ -100,6 +100,12 @@ public class AllITs
     }
 
     @Nested
+    @DisplayName("Copy page tests")
+    class NestedCopyPageIT extends CopyPageIT
+    {
+    }
+
+    @Nested
     @DisplayName("Section editing tests")
     class NestedSectionEditIT extends SectionEditIT
     {
@@ -149,13 +155,43 @@ public class AllITs
 
     @Nested
     @DisplayName("Restore deleted Page tests")
-    class NestedRestoreDeletedPageIT extends RestoreDeletedPageIT
+    class NestedRecycleBinIT extends RecycleBinIT
+    {
+    }
+
+    @Nested
+    @DisplayName("PDF Export Tests")
+    class NestedPDFExportIT extends PDFExportIT
     {
     }
     
     @Nested
-    @DisplayName("Invitation tests")
-    class NestedInvitationIT extends InvitationIT
+    @DisplayName("Backlinks Tests")
+    class NestedBacklinksIT extends BacklinksIT
+    {
+    }
+
+    @Nested
+    @DisplayName("TextArea property Tests")
+    class NestedTextAreaIT extends TextAreaIT
+    {
+    }
+
+    @Nested
+    @DisplayName("Sheet system Tests")
+    class NestedSheetIT extends SheetIT
+    {
+    }
+
+    @Nested
+    @DisplayName("Script author Tests")
+    class NestedScriptAuthorIT extends ScriptAuthorIT
+    {
+    }
+
+    @Nested
+    @DisplayName("Form Token injection Tests")
+    class NestedFormTokenInjectionIT extends FormTokenInjectionIT
     {
     }
 }

@@ -43,6 +43,7 @@ import org.xwiki.context.Execution;
 import org.xwiki.context.ExecutionContext;
 import org.xwiki.display.internal.DocumentDisplayerParameters;
 import org.xwiki.model.document.DocumentAuthors;
+import org.xwiki.model.internal.document.SafeDocumentAuthors;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.DocumentReferenceResolver;
 import org.xwiki.model.reference.EntityReferenceSerializer;
@@ -131,11 +132,6 @@ public class Document extends Api
      */
     private EntityReferenceSerializer<String> localEntityReferenceSerializer;
 
-    /**
-     * Used to convert user references to string.
-     */
-    private EntityReferenceSerializer<String> compactWikiEntityReferenceSerializer;
-
     private DocumentRevisionProvider documentRevisionProvider;
 
     private ConfigurationSource configuration;
@@ -166,16 +162,6 @@ public class Document extends Api
         }
 
         return this.localEntityReferenceSerializer;
-    }
-
-    private EntityReferenceSerializer<String> getCompactWikiEntityReferenceSerializer()
-    {
-        if (this.compactWikiEntityReferenceSerializer == null) {
-            this.compactWikiEntityReferenceSerializer =
-                Utils.getComponent(EntityReferenceSerializer.TYPE_STRING, "compactwiki");
-        }
-
-        return this.compactWikiEntityReferenceSerializer;
     }
 
     private DocumentRevisionProvider getDocumentRevisionProvider()
@@ -451,7 +437,8 @@ public class Document extends Api
     /**
      * Get fullName of the profile document of the author of the current version of the document. Example: XWiki.Admin.
      *
-     * @return The fullName of the profile document of the author of the current version of the document.
+     * @return The fullName of the profile document of the effective metadata author of the current version of the
+     *         document.
      */
     public String getAuthor()
     {
@@ -2161,6 +2148,9 @@ public class Document extends Api
     /**
      * Verifies if the user identified by {@code userReference} has the access identified by {@code right} on this
      * document.
+     * Note that this method does not override {@link Api#hasAccess(Right, DocumentReference)}: they share same
+     * signature but on the {@code Api} one the {@link DocumentReference} parameter is about the entity where to check
+     * the right, while here it's about the user to check right for.
      * 
      * @param right the right to check
      * @param userReference the user to check the right for
@@ -2170,6 +2160,19 @@ public class Document extends Api
     public boolean hasAccess(Right right, DocumentReference userReference)
     {
         return getAuthorizationManager().hasAccess(right, userReference, getDocumentReference());
+    }
+
+    /**
+     * Verifies if the context user has the access identified by {@code right} on the current context document.
+     * @param right the right to check
+     * @return {@code true} if the user has the specified right on this document, {@code false} otherwise
+     * @since 14.10
+     * @since 14.4.7
+     */
+    @Unstable
+    public boolean hasAccess(Right right)
+    {
+        return hasAccess(right, getXWikiContext().getUserReference());
     }
 
     public boolean getLocked()
@@ -2214,6 +2217,16 @@ public class Document extends Api
         }
     }
 
+    /**
+     * Renders the passed xproperty as HTML. Note that if you need the raw value, you should call 
+     * {@link #getValue(String)} instead. 
+     *
+     * @param classOrFieldName the xproperty (aka field) name to render or an xclass reference
+     * @return the rendered xproperty as HTML if an xobject exists with that xproperty. Otherwise considers that the
+     *         passed parameter is an xclass reference and return the xobject for it or null if none exist
+     * @see #getValue(String) 
+     * @see #getValue(String, Object) 
+     */
     public java.lang.Object get(String classOrFieldName)
     {
         if (this.currentObj != null) {
@@ -2226,6 +2239,12 @@ public class Document extends Api
         return this.getDoc().getObject(classOrFieldName);
     }
 
+    /**
+     * @param fieldName the xproperty (aka field) name for which to get the value
+     * @return the raw value of the passed xproperty found in the current xobject or in the first xobject containing
+     *         such a field
+     * @see #getValue(String, Object) 
+     */
     public java.lang.Object getValue(String fieldName)
     {
         Object object;
@@ -2237,6 +2256,12 @@ public class Document extends Api
         return getValue(fieldName, object);
     }
 
+    /**
+     * @param fieldName the xproperty (aka field) name for which to get the value
+     * @param object the specific xobject from which to get the xproperty value
+     * @return the raw value of the passed xproperty
+     * @see #getValue(String)
+     */
     public java.lang.Object getValue(String fieldName, Object object)
     {
         if (object != null) {
@@ -2573,7 +2598,7 @@ public class Document extends Api
     {
         if (hasAccessLevel("edit")) {
 
-            DocumentAuthors authors = this.getAuthors();
+            DocumentAuthors authors = getDoc().getAuthors();
             authors.setOriginalMetadataAuthor(getCurrentUserReferenceResolver().resolve(CurrentUserReference.INSTANCE));
             // If the current author does not have PR don't let it set current user as author of the saved document
             // since it can lead to right escalation
@@ -2670,7 +2695,7 @@ public class Document extends Api
     {
         XWikiContext xcontext = getXWikiContext();
 
-        getAuthors()
+        getDoc().getAuthors()
             .setOriginalMetadataAuthor(getCurrentUserReferenceResolver().resolve(CurrentUserReference.INSTANCE));
         DocumentReference author = getEffectiveAuthorReference();
         if (hasAccess(Right.EDIT, author)) {
@@ -3175,6 +3200,17 @@ public class Document extends Api
         return this.doc.isMostRecent();
     }
 
+    /**
+     * @return if rendering transformations shall be executed in restricted mode and the title not be executed
+     * @since 14.10.7
+     * @since 15.2RC1
+     */
+    @Unstable
+    public boolean isRestricted()
+    {
+        return this.doc.isRestricted();
+    }
+
     @Override
     public String toString()
     {
@@ -3288,6 +3324,12 @@ public class Document extends Api
     @Unstable
     public DocumentAuthors getAuthors()
     {
-        return doc.getAuthors();
+        if (this.hasAccess(Right.PROGRAM)) {
+            // We're using getDoc here to ensure to have a cloned doc
+            return getDoc().getAuthors();
+        } else {
+            // in this case we don't care if the doc is cloned or not since it's readonly
+            return new SafeDocumentAuthors(this.doc.getAuthors());
+        }
     }
 }

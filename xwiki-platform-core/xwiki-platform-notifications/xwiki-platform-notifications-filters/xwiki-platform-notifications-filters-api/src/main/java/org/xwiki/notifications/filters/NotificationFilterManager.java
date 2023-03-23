@@ -31,7 +31,6 @@ import org.xwiki.notifications.NotificationException;
 import org.xwiki.notifications.filters.internal.ToggleableNotificationFilter;
 import org.xwiki.notifications.preferences.NotificationPreference;
 import org.xwiki.rendering.block.Block;
-import org.xwiki.stability.Unstable;
 
 /**
  * Provide an interface for interacting with user notification filters.
@@ -58,7 +57,6 @@ public interface NotificationFilterManager
      * @throws NotificationException if error happens
      * @since 13.3RC1
      */
-    @Unstable
     default Collection<NotificationFilter> getAllFilters(WikiReference wikiReference) throws NotificationException
     {
         return Collections.emptyList();

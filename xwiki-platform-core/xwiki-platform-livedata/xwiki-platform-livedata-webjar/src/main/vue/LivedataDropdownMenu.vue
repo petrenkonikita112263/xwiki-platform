@@ -19,10 +19,10 @@
 -->
 
 <!--
-  LivedataDropdownMenu is a component that propose different actions
-  to the user: chaging layout, opning advance configuration panels, ...
+  LivedataDropdownMenu is a component that provides different actions
+  to the user: switching layouts, opening advanced configuration panels, ...
   It should be included once in every layout component,
-  generaly on the leftmost of its topbar so that it stay a consistent place.
+  generally at the very left of its top bar so it stays at a consistent place.
 -->
 <template>
   <!--
@@ -37,7 +37,7 @@
       :title="$t('livedata.dropdownMenu.title')"
       data-toggle="dropdown"
       aria-haspopup="true"
-      aria-expanded="true"
+      aria-expanded="false"
       role="button"
     >
       <XWikiIcon :icon-descriptor="{name: 'more-vertical'}" />
@@ -82,24 +82,10 @@
 
       <li class="dropdown-header">{{ $t('livedata.dropdownMenu.panels') }}</li>
 
-      <!-- Properties Panel -->
-      <li>
-        <a href="#" @click.prevent="logic.uniqueArrayToggle(logic.openedPanels, 'propertiesPanel')">
-          <XWikiIcon :icon-descriptor="{name: 'list-bullets'}" /> {{ $t('livedata.dropdownMenu.panels.properties') }}
-        </a>
-      </li>
-
-      <!-- Sort Panel -->
-      <li>
-        <a href="#" @click.prevent="logic.uniqueArrayToggle(logic.openedPanels, 'sortPanel')">
-          <XWikiIcon :icon-descriptor="{name: 'table_sort'}"/> {{ $t('livedata.dropdownMenu.panels.sort') }}
-        </a>
-      </li>
-
-      <!-- Filter Panel -->
-      <li>
-        <a href="#" @click.prevent="logic.uniqueArrayToggle(logic.openedPanels, 'filterPanel')">
-          <XWikiIcon :icon-descriptor="{name: 'filter'}"/> {{ $t('livedata.dropdownMenu.panels.filter') }}
+      <li v-for="panel in logic.panels" :key="panel.id">
+        <a href="#" @click.prevent="logic.uniqueArrayToggle(logic.openedPanels, panel.id)">
+          <XWikiIcon :icon-descriptor="{name: panel.icon}"/>
+          {{ panel.name }}
         </a>
       </li>
 

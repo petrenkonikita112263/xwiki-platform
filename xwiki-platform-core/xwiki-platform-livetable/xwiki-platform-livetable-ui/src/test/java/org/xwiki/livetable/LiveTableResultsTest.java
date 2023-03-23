@@ -20,15 +20,23 @@
 package org.xwiki.livetable;
 
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import org.apache.commons.lang3.StringUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
+import org.xwiki.mail.GeneralMailConfiguration;
+import org.xwiki.mail.MailSender;
+import org.xwiki.mail.script.MailScriptServiceComponentList;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.script.ModelScriptService;
 import org.xwiki.query.internal.ScriptQuery;
@@ -38,15 +46,20 @@ import org.xwiki.script.service.ScriptService;
 import org.xwiki.security.authorization.Right;
 import org.xwiki.security.script.SecurityScriptServiceComponentList;
 import org.xwiki.test.annotation.ComponentList;
+import org.xwiki.test.junit5.mockito.MockComponent;
 import org.xwiki.test.page.PageTest;
 import org.xwiki.test.page.XWikiSyntax20ComponentList;
 import org.xwiki.velocity.tools.JSONTool;
 
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.doc.XWikiDocument;
+import com.xpn.xwiki.objects.BaseObject;
+import com.xpn.xwiki.objects.classes.BaseClass;
 import com.xpn.xwiki.objects.classes.StaticListClass;
 import com.xpn.xwiki.plugin.tag.TagPluginApi;
 
+import static java.util.Collections.emptyList;
+import static java.util.Collections.singletonList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -60,14 +73,16 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.xwiki.rendering.syntax.Syntax.XWIKI_2_1;
 
 /**
  * Unit tests for the {@code LiveTableResults} page.
- * 
+ *
  * @version $Id$
  */
 @XWikiSyntax20ComponentList
 @SecurityScriptServiceComponentList
+@MailScriptServiceComponentList
 @ComponentList({
     ModelScriptService.class
 })
@@ -79,6 +94,9 @@ class LiveTableResultsTest extends PageTest
 
     @Mock
     private ScriptQuery query;
+
+    @MockComponent
+    private GeneralMailConfiguration generalMailConfiguration;
 
     @BeforeEach
     @SuppressWarnings("deprecation")
@@ -100,6 +118,10 @@ class LiveTableResultsTest extends PageTest
         doReturn(tagPluginApi).when(this.oldcore.getSpyXWiki()).getPluginApi(eq("tag"), any(XWikiContext.class));
 
         loadPage(new DocumentReference("xwiki", "XWiki", "LiveTableResultsMacros"));
+
+        // Mock this component as we are not interested in mail sending in this test suite.
+        this.componentManager.registerMockComponent(MailSender.class);
+        this.componentManager.registerMockComponent(ScriptService.class, "mail.storage");
     }
 
     @Test
@@ -468,6 +490,157 @@ class LiveTableResultsTest extends PageTest
         Map<String, Object> viewable = rows.get(0);
         assertTrue((boolean) viewable.get("doc_viewable"));
         assertEquals("XWiki.Viewable", viewable.get("doc_fullName"));
+    }
+
+    @Test
+    void removeObfuscatedResultsWhenLimitIs0() throws Exception
+    {
+        when(this.queryService.hql(anyString())).thenReturn(this.query);
+        when(this.query.setLimit(anyInt())).thenReturn(this.query);
+        when(this.query.setOffset(anyInt())).thenReturn(this.query);
+        when(this.query.bindValues(any(Map.class))).thenReturn(this.query);
+        when(this.query.count()).thenReturn(1L);
+        when(this.query.execute()).thenReturn(Arrays.asList("XWiki.NotViewable"));
+
+        when(this.oldcore.getMockContextualAuthorizationManager()
+            .hasAccess(same(Right.VIEW), eq(new DocumentReference("xwiki", "XWiki", "NotViewable")))).thenReturn(false);
+
+        this.request.put("limit", "0");
+        this.request.put("classname", "");
+        this.request.put("collist", "doc.title,doc.location,doc.content");
+        this.request.put("doc.title", "Sandbo");
+        this.request.put("doc.location", "Sandbox.TestPage3");
+        this.request.put("doc.content", "dummy");
+        this.request.put("limit", "0");
+
+        renderPage();
+
+        assertEquals(0, getTotalRowCount());
+        assertEquals(0, getRowCount());
+        assertEquals(1, getOffset());
+        assertEquals(emptyList(), getRows());
+    }
+
+    @Test
+    void cleanupAccessToPasswordFields() throws Exception
+    {
+        // Initialize an XClass with a password field.
+        DocumentReference documentReference = new DocumentReference("xwiki", "XWiki", "MyClass");
+        XWikiDocument xwikiDocument = this.xwiki.getDocument(documentReference, this.context);
+        BaseClass xClass = xwikiDocument.getXClass();
+        xClass.addPasswordField("password", "Password", 30);
+        this.xwiki.saveDocument(xwikiDocument, this.context);
+
+        when(this.queryService.hql(anyString())).thenReturn(this.query);
+        when(this.query.setLimit(anyInt())).thenReturn(this.query);
+        when(this.query.setOffset(anyInt())).thenReturn(this.query);
+        when(this.query.bindValues(any(Map.class))).thenReturn(this.query);
+        when(this.query.count()).thenReturn(0L);
+        when(this.query.execute()).thenReturn(Collections.emptyList());
+
+        this.request.put("classname", "XWiki.MyClass");
+        this.request.put("password", "abcd");
+        this.request.put("collist", "password");
+
+        renderPage();
+
+        verify(this.queryService).hql(", BaseObject as obj   "
+            + "where obj.name=doc.fullName "
+            + "and obj.className = :className "
+            + "and doc.fullName not in (:classTemplate1, :classTemplate2)  ");
+    }
+
+    private static Stream<Arguments> provideObfuscateEmails()
+    {
+        return Stream.of(
+            Arguments.of(
+                true,
+                ", BaseObject as obj , StringProperty as prop_name  "
+                    + "where obj.name=doc.fullName "
+                    + "and obj.className = :className "
+                    + "and doc.fullName not in (:classTemplate1, :classTemplate2)  "
+                    + "and obj.id = prop_name.id.id "
+                    + "and prop_name.id.name = :prop_name_id_name "
+                    + "and (upper(prop_name.value) like upper(:prop_name_value_1)) ",
+                Map.of(
+                    "className", "Space.MyClass",
+                    "classTemplate1", "Space.MyClassTemplate",
+                    "classTemplate2", "Space.MyTemplate",
+                    "prop_name_id_name", "name",
+                    "prop_name_value_1", "%filtername%"
+                ),
+                "t...@mail.com",
+                "t...@mail.com"
+            ),
+            Arguments.of(
+                false,
+                ", BaseObject as obj , StringProperty as prop_mail, StringProperty as prop_name  "
+                    + "where obj.name=doc.fullName "
+                    + "and obj.className = :className "
+                    + "and doc.fullName not in (:classTemplate1, :classTemplate2)  "
+                    + "and obj.id = prop_mail.id.id "
+                    + "and prop_mail.id.name = :prop_mail_id_name "
+                    + "and (upper(prop_mail.value) like upper(:prop_mail_value_1)) "
+                    + "and obj.id = prop_name.id.id "
+                    + "and prop_name.id.name = :prop_name_id_name "
+                    + "and (upper(prop_name.value) like upper(:prop_name_value_1)) ",
+                Map.of(
+                    "className", "Space.MyClass",
+                    "classTemplate1", "Space.MyClassTemplate",
+                    "classTemplate2", "Space.MyTemplate",
+                    "prop_mail_id_name", "mail",
+                    "prop_mail_value_1", "%filtermail%",
+                    "prop_name_id_name", "name",
+                    "prop_name_value_1", "%filtername%"),
+                "<a href=\"mailto:test@mail.com\">test@mail.com</a>",
+                "test@mail.com"
+            )
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("provideObfuscateEmails")
+    void obfuscateEmails(boolean obfuscate, String expectedHql, Map<String, Object> expectedBindValues,
+        String expectedMail, String expectedMailValue) throws Exception
+    {
+        // TODO: We mock the mail configuration as it relies on document that are loaded through xar files from external
+        //  modules, which is currently not possible (would it be loaded using a mandatory document initializer, it 
+        //  would work though).
+        when(this.generalMailConfiguration.shouldObfuscate()).thenReturn(obfuscate);
+
+        DocumentReference myClassReference = new DocumentReference("xwiki", "Space", "MyClass");
+        XWikiDocument xClassDocument = new XWikiDocument(myClassReference);
+        xClassDocument.getXClass().addEmailField("mail", "Email", 100);
+        xClassDocument.getXClass().addTextField("name", "Name", 100);
+        this.xwiki.saveDocument(xClassDocument, this.context);
+
+        XWikiDocument xObjectDocument = new XWikiDocument(new DocumentReference("xwiki", "Space", "MyObject"));
+        xObjectDocument.setSyntax(XWIKI_2_1);
+        BaseObject baseObject = xObjectDocument.newXObject(myClassReference, this.context);
+        baseObject.set("mail", "test@mail.com", this.context);
+        baseObject.set("name", "testName", this.context);
+        this.xwiki.saveDocument(xObjectDocument, this.context);
+
+        setColumns("mail,name");
+        setClassName("Space.MyClass");
+        setFilter("mail", "filtermail");
+        setFilter("name", "filtername");
+
+        when(this.queryService.hql(anyString())).thenReturn(this.query);
+        when(this.query.setLimit(anyInt())).thenReturn(this.query);
+        when(this.query.setOffset(anyInt())).thenReturn(this.query);
+        when(this.query.bindValues(any(Map.class))).thenReturn(this.query);
+        when(this.query.count()).thenReturn(1L);
+        when(this.query.execute()).thenReturn(singletonList("Space.MyObject"));
+
+        renderPage();
+
+        List<Map<String, Object>> rows = getRows();
+        assertEquals(expectedMail, StringUtils.trim((String) rows.get(0).get("mail")));
+        assertEquals(expectedMailValue, rows.get(0).get("mail_value"));
+
+        verify(this.queryService).hql(expectedHql);
+        verify(this.query).bindValues(expectedBindValues);
     }
 
     //

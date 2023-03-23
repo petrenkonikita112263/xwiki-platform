@@ -19,7 +19,9 @@
  */
 package org.xwiki.eventstream.internal;
 
+import java.util.Collection;
 import java.util.Date;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -96,17 +98,24 @@ public class DefaultEventStore implements EventStore, Initializable
         if (this.configuration.isEventStoreEnabled()) {
             String hint = this.configuration.getEventStore();
 
-            try {
-                this.store = this.componentManager.getInstance(EventStore.class, hint);
-            } catch (ComponentLookupException e) {
-                if (this.configuration.isEventStoreSet()) {
-                    // Fail the init if the store was explicitly configured
+            // Check if the configured event store exist
+            if (this.componentManager.hasComponent(EventStore.class, hint)) {
+                try {
+                    this.store = this.componentManager.getInstance(EventStore.class, hint);
+                } catch (ComponentLookupException e) {
                     throw new InitializationException(
                         String.format("Failed to get the configured event store [%s]", hint), e);
-                } else {
-                    // Ignore the failure if the store was not explicitly configured
-                    this.logger.warn("No default implementation of EventStore could be lookup", e);
                 }
+            } else {
+                if (this.configuration.isEventStoreSet()) {
+                    // An event store was explicitly configured
+                    throw new InitializationException(String
+                        .format("Could not find the configured implementation of event store with hint [%s]", hint));
+                }
+
+                // Just warn, no event will be stored (except in the legacy one if available)
+                this.logger.warn("No default implementation of EventStore could be found."
+                    + " No event will be stored (except in the legacy store if available).");
             }
         }
 
@@ -428,5 +437,19 @@ public class DefaultEventStore implements EventStore, Initializable
         if (event.getGroupId() == null && context != null) {
             event.setGroupId((String) context.getProperty(GROUP_ID_CONTEXT_KEY));
         }
+    }
+
+    @Override
+    public List<EventStatus> getEventStatuses(Collection<Event> events, Collection<String> entityIds) throws Exception
+    {
+        if (this.store != null) {
+            return this.store.getEventStatuses(events, entityIds);
+        }
+
+        if (this.legacyStore != null) {
+            return this.legacyStore.getEventStatuses(events, entityIds);
+        }
+
+        return List.of();
     }
 }

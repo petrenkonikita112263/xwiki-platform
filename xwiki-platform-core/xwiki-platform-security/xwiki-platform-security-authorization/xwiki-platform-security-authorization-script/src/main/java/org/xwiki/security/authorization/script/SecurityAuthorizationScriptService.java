@@ -34,7 +34,6 @@ import org.xwiki.security.authorization.AuthorizationManager;
 import org.xwiki.security.authorization.ContextualAuthorizationManager;
 import org.xwiki.security.authorization.Right;
 import org.xwiki.security.script.SecurityScriptService;
-import org.xwiki.stability.Unstable;
 
 /**
  * Security Authorization Script Service.
@@ -165,7 +164,6 @@ public class SecurityAuthorizationScriptService implements ScriptService
      * @return all the registered rights names.
      * @since 13.5RC1
      */
-    @Unstable
     public List<String> getAllRightsNames()
     {
         return Right.getAllRightsAsString();

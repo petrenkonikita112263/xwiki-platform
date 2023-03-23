@@ -23,7 +23,6 @@ import java.io.File;
 import java.io.FileWriter;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -70,6 +69,10 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
     private static final String ORACLE_TZ_WORKAROUND = "-Doracle.jdbc.timezoneAsRegion=false";
 
     private static final String OFFICE_IMAGE_VERSION_LABEL = "image-version";
+
+    private static final String DOCKER_SOCK = "/var/run/docker.sock";
+
+    private static final String ROOT_USER = "root";
 
     private JettyStandaloneExecutor jettyStandaloneExecutor;
 
@@ -151,7 +154,7 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
 
             startContainer();
 
-            xwikiIPAddress = this.servletContainer.getContainerIpAddress();
+            xwikiIPAddress = this.servletContainer.getHost();
             xwikiPort =
                 this.servletContainer.getMappedPort(this.testConfiguration.getServletEngine().getInternalPort());
         }
@@ -170,15 +173,14 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
     private void configureJetty(File sourceWARDirectory) throws Exception
     {
         this.servletContainer = createServletContainer();
-        mountFromHostToContainer(this.servletContainer, sourceWARDirectory.toString(),
-            "/var/lib/jetty/webapps/xwiki");
+        mountFromHostToContainer(this.servletContainer, sourceWARDirectory.toString(), "/var/lib/jetty/webapps/xwiki");
+
+        List<String> javaOpts = new ArrayList<>();
 
         // TODO: Remove once https://jira.xwiki.org/browse/XWIKI-19034 and https://jira.xwiki.org/browse/XRENDERING-616
         // have been fixed.
         if (SystemUtils.isJavaVersionAtLeast(JavaVersion.JAVA_17)) {
-            List<String> javaOpts = new ArrayList<>();
             addJava17AddOpens(javaOpts);
-            this.servletContainer.withEnv("JAVA_OPTS", StringUtils.join(javaOpts, ' '));
         }
 
         // When executing on the Oracle database, we get the following timezone error unless we pass a system
@@ -187,30 +189,37 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
         //   recursive SQL level 1
         //   ORA-01882: timezone region not found
         if (this.testConfiguration.getDatabase().equals(Database.ORACLE)) {
-            List<String> commandPartList =
-                new ArrayList<>(Arrays.asList(this.servletContainer.getCommandParts()));
-            commandPartList.add(ORACLE_TZ_WORKAROUND);
-            this.servletContainer.setCommandParts(commandPartList.toArray(new String[0]));
+            javaOpts.add(ORACLE_TZ_WORKAROUND);
         }
+
+        maybeEnableRemoteDebugging(javaOpts);
+        this.servletContainer.withEnv("JAVA_OPTIONS", StringUtils.join(javaOpts, ' '));
 
         // Jetty 10.0.3+ has now added a protection in URLs so that encoded characters such as % are
         // prohibited by default. Since XWiki uses them, we need to configure Jetty to allow for it. See
         // https://www.eclipse.org/jetty/documentation/jetty-10/operations-guide/index.html#og-module-server-compliance
         this.servletContainer.setCommand("jetty.httpConfig.uriCompliance=RFC3986");
+
+        // We need to run Jetty using the root user (instead of the jetty user) in order to have access to the Docker
+        // socket (otherwise we can't manage the Docker containers from within XWiki, which is a use case for the PDF
+        // export application).
+        this.servletContainer.withCreateContainerCmdModifier(cmd -> cmd.withUser(ROOT_USER));
     }
 
     private void configureTomcat(File sourceWARDirectory) throws Exception
     {
         // Configure Tomcat logging for debugging. Create a logging.properties file
         File logFile = new File(sourceWARDirectory, "WEB-INF/classes/logging.properties");
-        if (!logFile.createNewFile()) {
-            throw new Exception(String.format("Logging configuration file already exists at [%s]. Maybe more than one"
-                + " IT test have executed, leading to several Docker setups?", logFile.getAbsoluteFile()));
-        }
-        try (FileWriter writer = new FileWriter(logFile)) {
-            IOUtils.write("org.apache.catalina.core.ContainerBase.[Catalina].level = FINE\n"
-                + "org.apache.catalina.core.ContainerBase.[Catalina].handlers = "
-                + "java.util.logging.ConsoleHandler\n", writer);
+        if (!logFile.exists()) {
+            if (!logFile.createNewFile()) {
+                throw new Exception(String.format("Failed to create Tomcat logging configuration file at [%s]",
+                    logFile.getAbsoluteFile()));
+            }
+            try (FileWriter writer = new FileWriter(logFile)) {
+                IOUtils.write("org.apache.catalina.core.ContainerBase.[Catalina].level = FINE\n"
+                    + "org.apache.catalina.core.ContainerBase.[Catalina].handlers = "
+                    + "java.util.logging.ConsoleHandler\n", writer);
+            }
         }
         this.servletContainer = createServletContainer();
         mountFromHostToContainer(this.servletContainer, sourceWARDirectory.toString(),
@@ -226,16 +235,7 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
         // need to add them as we do for Jetty.
         // see https://jira.xwiki.org/browse/XWIKI-19034 and https://jira.xwiki.org/browse/XRENDERING-616
 
-        // If we're on debug mode, start XWiki in debug mode too so that we can attach a remote debugger to it
-        // in order to debug.
-        // Note: To attach the remote debugger, run "docker ps" to get the local mapped port for 5005, and use
-        // "localhost" as the JVM host to connect to.
-        if (this.testConfiguration.isDebug()) {
-            catalinaOpts.add("-Xdebug");
-            catalinaOpts.add("-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5005");
-            catalinaOpts.add("-Xnoagent");
-            catalinaOpts.add("-Djava.compiler=NONE");
-        }
+        maybeEnableRemoteDebugging(catalinaOpts);
 
         // When executing on the Oracle database, we get the following timezone error unless we pass a system
         // property to the Oracle JDBC driver:
@@ -247,6 +247,20 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
         }
 
         this.servletContainer.withEnv("CATALINA_OPTS", StringUtils.join(catalinaOpts, ' '));
+    }
+
+    private void maybeEnableRemoteDebugging(List<String> options)
+    {
+        // If we're on debug mode, start XWiki in debug mode too so that we can attach a remote debugger to it
+        // in order to debug.
+        // Note: To attach the remote debugger, run "docker ps" to get the local mapped port for 5005, and use
+        // "localhost" as the JVM host to connect to.
+        if (this.testConfiguration.isDebug()) {
+            options.add("-Xdebug");
+            options.add("-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=*:5005");
+            options.add("-Xnoagent");
+            options.add("-Djava.compiler=NONE");
+        }
     }
 
     private void startContainer() throws Exception
@@ -268,6 +282,10 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
             exposedPorts.add(5005);
         }
         this.servletContainer.withExposedPorts(exposedPorts.toArray(new Integer[exposedPorts.size()]));
+
+        // Some XWiki modules (e.g. PDF export) are using Docker so we need to mount the Docker socket in order for them
+        // to work when the servlet engine runs itself inside a Docker container.
+        this.servletContainer.withFileSystemBind(DOCKER_SOCK, DOCKER_SOCK);
 
         // We want by default to have the local repository mounted, but this won't work in the DOOD use case.
         // For that to work we would need to copy the data instead of mounting the volume but the time
@@ -292,6 +310,16 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
             mountFromHostToContainer(this.servletContainer, CLOVER_DATABASE, CLOVER_DATABASE);
         }
 
+        // Also map the permanent directory if asked by the test (to keep it after the test is finished, can be
+        // useful to debug something that only happens on the CI for example).
+        if (this.testConfiguration.isPermanentDirectoryDataSaved()
+            && !this.testConfiguration.getServletEngine().isOutsideDocker())
+        {
+            File permanentDirectoryOnHost = new File(this.testConfiguration.getOutputDirectory(), "permanentDirectory");
+            this.servletContainer.withFileSystemBind(permanentDirectoryOnHost.getAbsolutePath(),
+                this.testConfiguration.getServletEngine().getPermanentDirectory());
+        }
+
         start(this.servletContainer, this.testConfiguration);
     }
 
@@ -303,7 +331,7 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
             : (testConfiguration.getServletEngine().equals(ServletEngine.TOMCAT) ? "9" : LATEST);
     }
 
-    private GenericContainer createServletContainer() throws Exception
+    private GenericContainer<?> createServletContainer() throws Exception
     {
         String baseImageName = String.format("%s:%s",
             this.testConfiguration.getServletEngine().getDockerImageName(), getDockerImageTag(this.testConfiguration));
@@ -327,25 +355,30 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
                 LOGGER.info("(*) Build a dedicated image embedding LibreOffice...");
                 // The second argument of the ImageFromDockerfile is here to indicate we won't delete the image
                 // at the end of the test container execution.
-                container = new XWikiLocalGenericContainer(new ImageFromDockerfile(imageName, false)
+                container = new XWikiLocalGenericContainer<>(new ImageFromDockerfile(imageName, false)
                     .withDockerfileFromBuilder(builder -> {
                         builder
                             .from(baseImageName)
-                            .user("root")
+                            .user(ROOT_USER)
                             .env("LIBREOFFICE_VERSION", officeVersion)
-                            .env("LIBREOFFICE_DOWNLOAD_URL", "https://downloadarchive.documentfoundation.org/"
-                                + "libreoffice/old/$LIBREOFFICE_VERSION/deb/x86_64/"
+                            // Note: we use https://download.documentfoundation.org/libreoffice/stable/ and not
+                            // https://downloadarchive.documentfoundation.org/libreoffice/old so that we can benefit
+                            // from automatic LTS updates without any maintenance on our side. This is because the
+                            // LTS version is exposed without the full versions, e.g. 7.2.7 instead of 7.2.7.2.
+                            .env("LIBREOFFICE_DOWNLOAD_URL",
+                                "https://download.documentfoundation.org/libreoffice/stable/"
+                                + "$LIBREOFFICE_VERSION/deb/x86_64/"
                                 + "LibreOffice_${LIBREOFFICE_VERSION}_Linux_x86-64_deb.tar.gz")
                             // Note that we expose libreoffice /usr/local/libreoffice so that it can be found by
                             // JODConverter: https://bit.ly/2w8B82Q
                             .run("apt-get update && "
-                                + "apt-get --no-install-recommends -y install curl unzip procps libxinerama1 "
-                                    + "libdbus-glib-1-2 libcairo2 libcups2 libsm6 libx11-xcb1 && "
+                                + "apt-get --no-install-recommends -y install curl wget unzip procps libxinerama1 "
+                                    + "libdbus-glib-1-2 libcairo2 libcups2 libsm6 libx11-xcb1 libnss3 && "
                                 + "rm -rf /var/lib/apt/lists/* /var/cache/apt/* && "
                                 + "wget --no-verbose -O /tmp/libreoffice.tar.gz $LIBREOFFICE_DOWNLOAD_URL && "
                                 + "mkdir /tmp/libreoffice && "
                                 + "tar -C /tmp/ -xvf /tmp/libreoffice.tar.gz && "
-                                + "cd /tmp/LibreOffice_${LIBREOFFICE_VERSION}_Linux_x86-64_deb/DEBS && "
+                                + "cd `ls -d /tmp/LibreOffice_${LIBREOFFICE_VERSION}*_Linux_x86-64_deb/DEBS` && "
                                 + "dpkg -i *.deb && "
                                 + "ln -fs `ls -d /opt/libreoffice*` /opt/libreoffice")
                             // Increment the image version whenever a change is brought to the image so that it can
@@ -362,7 +395,7 @@ public class ServletContainerExecutor extends AbstractContainerExecutor
                         builder.build();
                     }));
             } else {
-                container = new XWikiLocalGenericContainer(imageName);
+                container = new XWikiLocalGenericContainer<>(imageName);
             }
         } else {
             container = new GenericContainer<>(baseImageName);

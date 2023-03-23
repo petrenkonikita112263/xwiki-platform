@@ -29,7 +29,6 @@ import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
 import org.xwiki.extension.Extension;
-import org.xwiki.test.docker.internal.junit5.configuration.PropertiesMerger;
 import org.xwiki.test.docker.junit5.TestConfiguration;
 import org.xwiki.test.docker.junit5.UITest;
 import org.xwiki.test.docker.junit5.browser.Browser;
@@ -57,8 +56,6 @@ public class UITestTestConfigurationResolver
 
     private static final String DEBUG_PROPERTY = "xwiki.test.ui.debug";
 
-    private static final String SAVEDBDATA_PROPERTY = "xwiki.test.ui.saveDatabaseData";
-
     private static final String OFFLINE_PROPERTY = "xwiki.test.ui.offline";
 
     private static final String DATABASETAG_PROPERTY = "xwiki.test.ui.databaseTag";
@@ -69,13 +66,17 @@ public class UITestTestConfigurationResolver
 
     private static final String VNC_PROPERTY = "xwiki.test.ui.vnc";
 
+    private static final String WCAG_PROPERTY = "xwiki.test.ui.wcag";
+
     private static final String PROPERTIES_PREFIX_PROPERTY = "xwiki.test.ui.properties.";
 
     private static final String PROFILES_PROPERTY = "xwiki.test.ui.profiles";
 
     private static final String OFFICE_PROPERTY = "xwiki.test.ui.office";
 
-    private PropertiesMerger propertiesMerger = new PropertiesMerger();
+    private static final String SAVEDBDATA_PROPERTY = "xwiki.test.ui.saveDatabaseData";
+
+    private static final String SAVEPERMANENTDIRECTORY_PROPERTY = "xwiki.test.ui.savePermanentDirectoryData";
 
     /**
      * @param uiTestAnnotation the annotation from which to extract the configuration
@@ -89,12 +90,12 @@ public class UITestTestConfigurationResolver
         configuration.setServletEngine(resolveServletEngine(uiTestAnnotation.servletEngine()));
         configuration.setVerbose(resolveVerbose(uiTestAnnotation.verbose()));
         configuration.setDebug(resolveDebug(uiTestAnnotation.debug()));
-        configuration.setSaveDatabaseData(resolveSaveDatabaseData(uiTestAnnotation.saveDatabaseData()));
         configuration.setOffline(resolveOffline(uiTestAnnotation.offline()));
         configuration.setDatabaseTag(resolveDatabaseTag(uiTestAnnotation.databaseTag()));
         configuration.setServletEngineTag(resolveServletEngineTag(uiTestAnnotation.servletEngineTag()));
         configuration.setJDBCDriverVersion(resolveJDBCDriverVersion(uiTestAnnotation.jdbcDriverVersion()));
         configuration.setVNC(resolveVNC(uiTestAnnotation.vnc()));
+        configuration.setWCAG(resolveWCAG(uiTestAnnotation.wcag()));
         configuration.setProperties(resolveProperties(uiTestAnnotation.properties()));
         configuration.setExtraJARs(resolveExtraJARs(uiTestAnnotation.extraJARs()));
         configuration.setResolveExtraJARs(resolveResolveExtraJARs(uiTestAnnotation.resolveExtraJARs()));
@@ -104,6 +105,9 @@ public class UITestTestConfigurationResolver
         configuration.setOffice(resolveOffice(uiTestAnnotation.office()));
         configuration.setForbiddenServletEngines(resolveForbiddenServletEngines(uiTestAnnotation.forbiddenEngines()));
         configuration.setDatabaseCommands(resolveDatabaseCommands(uiTestAnnotation.databaseCommands()));
+        configuration.setSaveDatabaseData(resolveSaveDatabaseData(uiTestAnnotation.saveDatabaseData()));
+        configuration.setSavePermanentDirectoryData(resolveSavePermanentDirectoryData(
+            uiTestAnnotation.savePermanentDirectoryData()));
         return configuration;
     }
 
@@ -195,11 +199,6 @@ public class UITestTestConfigurationResolver
         return resolve(debug, DEBUG_PROPERTY);
     }
 
-    private boolean resolveSaveDatabaseData(boolean saveDatabaseData)
-    {
-        return resolve(saveDatabaseData, SAVEDBDATA_PROPERTY);
-    }
-
     private boolean resolveOffline(boolean offline)
     {
         return resolve(offline, OFFLINE_PROPERTY);
@@ -223,6 +222,11 @@ public class UITestTestConfigurationResolver
     private boolean resolveVNC(boolean vnc)
     {
         return resolve(vnc, VNC_PROPERTY);
+    }
+
+    private boolean resolveWCAG(boolean wcag)
+    {
+        return resolve(wcag, WCAG_PROPERTY);
     }
 
     private boolean resolveOffice(boolean office)
@@ -322,5 +326,15 @@ public class UITestTestConfigurationResolver
             newForbiddenServletEngines.addAll(Arrays.asList(forbiddenServletEngines));
         }
         return newForbiddenServletEngines;
+    }
+
+    private boolean resolveSaveDatabaseData(boolean saveDatabaseData)
+    {
+        return resolve(saveDatabaseData, SAVEDBDATA_PROPERTY);
+    }
+
+    private boolean resolveSavePermanentDirectoryData(boolean savePermanentDirectoryData)
+    {
+        return resolve(savePermanentDirectoryData, SAVEPERMANENTDIRECTORY_PROPERTY);
     }
 }

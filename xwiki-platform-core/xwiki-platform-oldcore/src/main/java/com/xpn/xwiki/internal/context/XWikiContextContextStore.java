@@ -23,21 +23,27 @@ import java.io.Serializable;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.inject.Inject;
 import javax.inject.Named;
 import javax.inject.Provider;
 import javax.inject.Singleton;
+import javax.servlet.http.Cookie;
 
 import org.slf4j.Logger;
 import org.xwiki.component.annotation.Component;
 import org.xwiki.container.servlet.HttpServletUtils;
 import org.xwiki.context.internal.concurrent.AbstractContextStore;
 import org.xwiki.model.reference.DocumentReference;
+import org.xwiki.rendering.internal.transformation.RenderingContextStore;
 import org.xwiki.wiki.descriptor.WikiDescriptor;
 import org.xwiki.wiki.descriptor.WikiDescriptorManager;
 import org.xwiki.wiki.manager.WikiManagerException;
@@ -126,6 +132,25 @@ public class XWikiContextContextStore extends AbstractContextStore
     public static final String SUFFIX_PROP_REQUEST_PARAMETERS = "parameters";
 
     /**
+     * The suffix of the entry containing the request cookies.
+     */
+    public static final String SUFFIX_PROP_REQUEST_COOKIES = "cookies";
+
+    /**
+     * The suffix of the entry containing the request headers.
+     * 
+     * @since 14.10
+     */
+    public static final String SUFFIX_PROP_REQUEST_HEADERS = "headers";
+
+    /**
+     * The suffix of the entry containing the request remote address.
+     * 
+     * @since 14.10
+     */
+    public static final String SUFFIX_PROP_REQUEST_REMOTE_ADDR = "remoteAddr";
+
+    /**
      * The suffix of the entry containing the request wiki.
      * 
      * @since 10.11RC1
@@ -154,6 +179,25 @@ public class XWikiContextContextStore extends AbstractContextStore
      * Name of the entry containing the request parameters.
      */
     public static final String PROP_REQUEST_PARAMETERS = PREFIX_PROP_REQUEST + SUFFIX_PROP_REQUEST_PARAMETERS;
+
+    /**
+     * Name of the entry containing the request cookies.
+     */
+    public static final String PROP_REQUEST_COOKIES = PREFIX_PROP_REQUEST + SUFFIX_PROP_REQUEST_COOKIES;
+
+    /**
+     * Name of the entry containing the request headers.
+     * 
+     * @since 14.10
+     */
+    public static final String PROP_REQUEST_HEADERS = PREFIX_PROP_REQUEST + SUFFIX_PROP_REQUEST_HEADERS;
+
+    /**
+     * Name of the entry containing the request remote address.
+     * 
+     * @since 14.10
+     */
+    public static final String PROP_REQUEST_REMOTE_ADDR = PREFIX_PROP_REQUEST + SUFFIX_PROP_REQUEST_REMOTE_ADDR;
 
     /**
      * Name of the entry containing the request wiki.
@@ -205,7 +249,8 @@ public class XWikiContextContextStore extends AbstractContextStore
     public XWikiContextContextStore()
     {
         super(PROP_WIKI, PROP_USER, PROP_LOCALE, PROP_ACTION, PROP_REQUEST_BASE, PROP_REQUEST_URL,
-            PROP_REQUEST_PARAMETERS, PROP_REQUEST_WIKI, PROP_DOCUMENT_REFERENCE);
+            PROP_REQUEST_PARAMETERS, PROP_REQUEST_HEADERS, PROP_REQUEST_COOKIES, PROP_REQUEST_REMOTE_ADDR,
+            PROP_REQUEST_WIKI, PROP_DOCUMENT_REFERENCE);
     }
 
     @Override
@@ -264,6 +309,18 @@ public class XWikiContextContextStore extends AbstractContextStore
                         saveRequestParameters(contextStore, request);
                         break;
 
+                    case SUFFIX_PROP_REQUEST_HEADERS:
+                        saveRequestHeaders(contextStore, request);
+                        break;
+
+                    case SUFFIX_PROP_REQUEST_COOKIES:
+                        saveRequestCookies(contextStore, request);
+                        break;
+
+                    case SUFFIX_PROP_REQUEST_REMOTE_ADDR:
+                        saveRequestRemoteAddr(contextStore, request);
+                        break;
+
                     case SUFFIX_PROP_REQUEST_WIKI:
                         contextStore.put(key, xcontext.getOriginalWikiId());
                         break;
@@ -307,10 +364,39 @@ public class XWikiContextContextStore extends AbstractContextStore
         contextStore.put(PROP_REQUEST_PARAMETERS, new LinkedHashMap<>(request.getParameterMap()));
     }
 
+    private void saveRequestHeaders(Map<String, Serializable> contextStore, XWikiRequest request)
+    {
+        if (request.getHeaderNames() != null) {
+            Map<String, List<String>> headers = Collections.list(request.getHeaderNames()).stream()
+                .map(headerName -> Map.entry(headerName, Collections.list(request.getHeaders(headerName))))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (left, right) -> right,
+                    () -> new LinkedHashMap<String, List<String>>()));
+            contextStore.put(PROP_REQUEST_HEADERS, (Serializable) headers);
+        }
+    }
+
+    private void saveRequestCookies(Map<String, Serializable> contextStore, XWikiRequest request)
+    {
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            // Clone the cookies.
+            cookies = Stream.of(cookies).map(Cookie::clone).toArray(Cookie[]::new);
+        }
+        contextStore.put(PROP_REQUEST_COOKIES, cookies);
+    }
+
+    private void saveRequestRemoteAddr(Map<String, Serializable> contextStore, XWikiRequest request)
+    {
+        contextStore.put(PROP_REQUEST_REMOTE_ADDR, request.getRemoteAddr());
+    }
+
     private void saveRequestAll(Map<String, Serializable> contextStore, String key, XWikiRequest request)
     {
         saveRequestURL(contextStore, request);
         saveRequestParameters(contextStore, request);
+        saveRequestHeaders(contextStore, request);
+        saveRequestCookies(contextStore, request);
+        saveRequestRemoteAddr(contextStore, request);
     }
 
     @Override
@@ -327,17 +413,25 @@ public class XWikiContextContextStore extends AbstractContextStore
         }
 
         // User
+        DocumentReference userReference;
         if (contextStore.containsKey(PROP_USER)) {
-            xcontext.setUserReference((DocumentReference) contextStore.get(PROP_USER));
+            userReference = (DocumentReference) contextStore.get(PROP_USER);
 
             // If the current user is not a criteria set one which will always have all the required rights
         } else if (contextStore.containsKey(PROP_SECURE_AUTHOR)) {
             // If the author is provided use it to be as close as possible to the expected behavior
-            xcontext.setUserReference((DocumentReference) contextStore.get(PROP_SECURE_AUTHOR));
+            // Except when in case of restricted context since we cannot trust the author, by definition
+            boolean restricted = get(contextStore, RenderingContextStore.PROP_RESTRICTED, false);
+            if (restricted) {
+                userReference = null;
+            } else {
+                userReference = (DocumentReference) contextStore.get(PROP_SECURE_AUTHOR);
+            }
         } else {
             // Fallback on superadmin when no author is provided
-            xcontext.setUserReference(SUPERADMIN_REFERENCE);
+            userReference = SUPERADMIN_REFERENCE;
         }
+        xcontext.setUserReference(userReference);
 
         // Locale
         if (contextStore.containsKey(PROP_LOCALE)) {

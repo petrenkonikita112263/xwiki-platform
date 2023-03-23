@@ -39,10 +39,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.mockito.Mock;
 import org.mockito.stubbing.Answer;
-import org.xwiki.component.util.DefaultParameterizedType;
 import org.xwiki.context.Execution;
 import org.xwiki.model.reference.DocumentReference;
-import org.xwiki.model.reference.DocumentReferenceResolver;
+import org.xwiki.model.reference.EntityReference;
 import org.xwiki.model.reference.PageReference;
 import org.xwiki.rendering.configuration.ExtendedRenderingConfiguration;
 import org.xwiki.rendering.syntax.Syntax;
@@ -55,10 +54,12 @@ import org.xwiki.velocity.VelocityEngine;
 import org.xwiki.velocity.VelocityManager;
 
 import com.xpn.xwiki.XWiki;
+import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.XWikiException;
 import com.xpn.xwiki.api.DocumentSection;
 import com.xpn.xwiki.objects.BaseObject;
 import com.xpn.xwiki.objects.classes.BaseClass;
+import com.xpn.xwiki.objects.classes.PropertyClass;
 import com.xpn.xwiki.objects.classes.TextAreaClass;
 import com.xpn.xwiki.store.XWikiStoreInterface;
 import com.xpn.xwiki.store.XWikiVersioningStoreInterface;
@@ -76,9 +77,15 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -130,7 +137,7 @@ public class XWikiDocumentTest
     private BaseObject baseObject2;
 
     @RegisterExtension
-    LogCaptureExtension logCapture = new LogCaptureExtension(LogLevel.WARN);
+    private LogCaptureExtension logCapture = new LogCaptureExtension(LogLevel.WARN);
 
     @BeforeEach
     protected void setUp() throws Exception
@@ -177,6 +184,8 @@ public class XWikiDocumentTest
         when(this.xWiki.getStore()).thenReturn(xWikiStoreInterface);
         when(this.xWiki.getDocument(any(DocumentReference.class), any())).thenReturn(this.document);
         when(this.xWiki.getDocumentReference(any(XWikiRequest.class), any())).thenReturn(documentReference);
+        when(this.xWiki.getDocumentReference(any(EntityReference.class), any()))
+            .then(i -> new DocumentReference(i.getArgument(0)));
         when(this.xWiki.getLanguagePreference(any())).thenReturn("en");
         when(this.xWiki.getSectionEditingDepth()).thenReturn(2L);
         when(this.xWiki.getRightService()).thenReturn(this.xWikiRightService);
@@ -215,7 +224,7 @@ public class XWikiDocumentTest
     }
 
     @Test
-    public void getUniqueLinkedPages10()
+    public void getUniqueLinkedPages10() throws XWikiException
     {
         XWikiDocument contextDocument =
             new XWikiDocument(new DocumentReference("contextdocwiki", "contextdocspace", "contextdocpage"));
@@ -273,11 +282,8 @@ public class XWikiDocumentTest
         this.baseObject.setLargeStringValue("area", "[[TargetPage]][[ObjectTargetPage]]");
 
         // Simulate that "OtherPage.WebHome" exists
-        DocumentReferenceResolver<PageReference> currentPageReferenceDcoumentReferenceResolver =
-            this.oldcore.getMocker().registerMockComponent(
-                new DefaultParameterizedType(null, DocumentReferenceResolver.class, PageReference.class), "current");
-        when(currentPageReferenceDcoumentReferenceResolver.resolve(new PageReference("Wiki", "OtherPage")))
-            .thenReturn(new DocumentReference("Wiki", "OtherPage", "WebHome"));
+        doReturn(new DocumentReference("Wiki", "OtherPage", "WebHome")).when(this.xWiki)
+            .getDocumentReference(new PageReference("Wiki", "OtherPage"), this.oldcore.getXWikiContext());
 
         Set<String> linkedPages = this.document.getUniqueLinkedPages(this.oldcore.getXWikiContext());
 
@@ -645,6 +651,30 @@ public class XWikiDocumentTest
     }
 
     @Test
+    void displayEscapesClosingHTMLMacro()
+    {
+        this.oldcore.getXWikiContext().put("isInRenderingEngine", true);
+        when(this.xWiki.getCurrentContentSyntaxId(any())).thenReturn("xwiki/2.1");
+        this.document.setSyntax(Syntax.XWIKI_2_0);
+
+        BaseObject object = mock(BaseObject.class);
+        when(object.getOwnerDocument()).thenReturn(this.document);
+
+        BaseClass xClass = mock(BaseClass.class);
+        when(object.getXClass(any())).thenReturn(xClass);
+        PropertyClass propertyInterface = mock(PropertyClass.class);
+        when(xClass.get("mock")).thenReturn(propertyInterface);
+        doAnswer(call -> {
+            call.getArgument(0, StringBuffer.class).append("{{/html}}content{{/html}}");
+            return null;
+        }).when(propertyInterface).displayView(any(StringBuffer.class), eq("mock"), any(String.class), eq(object),
+            anyBoolean(), any(XWikiContext.class));
+
+        assertEquals("{{html clean=\"false\" wiki=\"false\"}}&#123;&#123;/html}}content&#123;&#123;/html}}{{/html}}",
+            this.document.display("mock", "view", object, this.oldcore.getXWikiContext()));
+    }
+
+    @Test
     public void convertSyntax() throws XWikiException
     {
         this.document.setSyntax(Syntax.HTML_4_01);
@@ -849,5 +879,39 @@ public class XWikiDocumentTest
         assertEquals(2, attachmentList.size());
         assertEquals("file.txt", attachmentList.get(1).getFilename());
         assertEquals("file", attachmentList.get(0).getFilename());
+    }
+
+    /*
+     * Test for checking that cloneInternal doesn't replace the XWikiDocumentArchive by an empty document archive,
+     * and to ensure that the versioningStore is properly called when using
+     * XWikiDocument#getDocumentArchive(XWikiContext).
+     */
+    @Test
+    void getDocumentArchiveAfterClone() throws XWikiException
+    {
+        XWikiContext context = this.oldcore.getXWikiContext();
+        XWikiVersioningStoreInterface versioningStore =
+            this.document.getVersioningStore(context);
+        when(versioningStore.getXWikiDocumentArchive(any(), any())).then(invocationOnMock -> {
+            XWikiDocument doc = invocationOnMock.getArgument(0);
+            if (doc.getDocumentArchive() != null) {
+                return doc.getDocumentArchive();
+            } else {
+                return mock(XWikiDocumentArchive.class);
+            }
+        });
+        assertSame(versioningStore, document.getVersioningStore(context));
+        assertNull(this.document.getDocumentArchive());
+        XWikiDocumentArchive documentArchive = this.document.getDocumentArchive(context);
+        assertNotNull(documentArchive);
+        assertNotNull(this.document.getDocumentArchive());
+
+        XWikiDocument cloneDoc = document.clone();
+        assertNull(cloneDoc.getDocumentArchive());
+        XWikiDocumentArchive cloneArchive = cloneDoc.getDocumentArchive(context);
+        verify(versioningStore).getXWikiDocumentArchive(
+            argThat(givenDoc -> givenDoc != XWikiDocumentTest.this.document), eq(context));
+        assertNotNull(cloneArchive);
+        assertNotSame(cloneArchive, documentArchive);
     }
 }

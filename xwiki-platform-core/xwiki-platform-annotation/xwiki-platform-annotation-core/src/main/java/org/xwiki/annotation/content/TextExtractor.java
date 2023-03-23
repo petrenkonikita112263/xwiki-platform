@@ -21,17 +21,19 @@ package org.xwiki.annotation.content;
 
 import org.xwiki.component.annotation.Role;
 import org.xwiki.rendering.syntax.Syntax;
-import org.xwiki.stability.Unstable;
 
 /**
  * Component responsible for extracting plain text from inside a given {@code String} depending on the syntax associated
  * with it. For example, the plain text could be extracted from inside an HTML content.
+ * <p>
+ * Note that from an architecture POV, it's not possible to use XWiki Rendering's parsers and Plain Text Renderers
+ * since for example not all HTML content can be expressed into XDOM Block (e.g. FORM tags cannot) and thus we would
+ * lose content and not be able to annotate it.
  * 
  * @version $Id$
  * @since 13.10RC1
  */
 @Role
-@Unstable
 public interface TextExtractor
 {
     /**

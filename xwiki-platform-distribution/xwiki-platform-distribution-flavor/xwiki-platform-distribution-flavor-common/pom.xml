@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.xwiki.platform</groupId>
     <artifactId>xwiki-platform-distribution-flavor</artifactId>
-    <version>14.4-SNAPSHOT</version>
+    <version>15.3-SNAPSHOT</version>
   </parent>
   <artifactId>xwiki-platform-distribution-flavor-common</artifactId>
   <name>XWiki Platform - Distribution - Flavor - Common</name>
@@ -213,21 +213,42 @@
       <optional>true</optional>
     </dependency>
     <dependency>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-attachment-picker-ui</artifactId>
+      <version>${project.version}</version>
+      <type>xar</type>
+    </dependency>
+    <dependency>
       <groupId>org.xwiki.contrib.templates</groupId>
       <artifactId>application-templates-ui</artifactId>
-      <version>1.0.7</version>
+      <version>1.0.9</version>
       <type>xar</type>
       <optional>true</optional>
     </dependency>
     <dependency>
-      <groupId>org.xwiki.contrib</groupId>
-      <artifactId>application-ckeditor-ui</artifactId>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-ckeditor-ui</artifactId>
+      <version>${project.version}</version>
       <type>xar</type>
+    </dependency>
+    <dependency>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-export-pdf-ui</artifactId>
+      <version>${project.version}</version>
+      <type>xar</type>
+      <optional>true</optional>
+    </dependency>
+    <dependency>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-whatsnew-ui</artifactId>
+      <version>${project.version}</version>
+      <type>xar</type>
+      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.xwiki.contrib.editortool</groupId>
       <artifactId>editor-tool-highlighting-ui</artifactId>
-      <version>4.6</version>
+      <version>4.6.1</version>
       <type>xar</type>
       <optional>true</optional>
       <exclusions>
@@ -249,6 +270,14 @@
       <groupId>org.webjars</groupId>
       <artifactId>jquery-migrate</artifactId>
       <version>3.3.2</version>
+      <optional>true</optional>
+    </dependency>
+    <!-- Inject the legacy event migrator in the administration -->
+    <dependency>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-legacy-events-hibernate-ui</artifactId>
+      <version>${project.version}</version>
+      <type>xar</type>
       <optional>true</optional>
     </dependency>
   </dependencies>

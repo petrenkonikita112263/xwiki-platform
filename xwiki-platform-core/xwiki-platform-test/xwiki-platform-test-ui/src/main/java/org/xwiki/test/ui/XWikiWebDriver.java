@@ -39,8 +39,6 @@ import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebDriverException;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.interactions.Actions;
-import org.openqa.selenium.interactions.Keyboard;
-import org.openqa.selenium.interactions.Mouse;
 import org.openqa.selenium.remote.CommandExecutor;
 import org.openqa.selenium.remote.ErrorHandler;
 import org.openqa.selenium.remote.FileDetector;
@@ -206,26 +204,26 @@ public class XWikiWebDriver extends RemoteWebDriver
         }
     }
 
-    public <T> void waitUntilCondition(ExpectedCondition<T> condition, int timeout)
+    public <T> T waitUntilCondition(ExpectedCondition<T> condition, int timeout)
     {
         int currentTimeout = getTimeout();
 
         try {
             setTimeout(timeout);
 
-            waitUntilCondition(condition);
+            return waitUntilCondition(condition);
         } finally {
             setTimeout(currentTimeout);
         }
     }
 
-    public <T> void waitUntilCondition(ExpectedCondition<T> condition)
+    public <T> T waitUntilCondition(ExpectedCondition<T> condition)
     {
         // Temporarily remove the implicit wait on the driver since we're doing our own waits...
         manage().timeouts().implicitlyWait(Duration.ofSeconds(0));
         Wait<WebDriver> wait = new WebDriverWait(this, Duration.ofSeconds(getTimeout()));
         try {
-            wait.until(condition::apply);
+            return wait.until(condition::apply);
         } finally {
             // Reset timeout
             setDriverImplicitWait();
@@ -796,18 +794,6 @@ public class XWikiWebDriver extends RemoteWebDriver
     public void setLogLevel(Level level)
     {
         this.wrappedDriver.setLogLevel(level);
-    }
-
-    @Override
-    public Keyboard getKeyboard()
-    {
-        return this.wrappedDriver.getKeyboard();
-    }
-
-    @Override
-    public Mouse getMouse()
-    {
-        return this.wrappedDriver.getMouse();
     }
 
     @Override

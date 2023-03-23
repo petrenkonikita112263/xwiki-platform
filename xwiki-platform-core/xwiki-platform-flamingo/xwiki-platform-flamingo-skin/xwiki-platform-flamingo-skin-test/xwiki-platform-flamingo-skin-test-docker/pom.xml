@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.xwiki.platform</groupId>
     <artifactId>xwiki-platform-flamingo-skin-test</artifactId>
-    <version>14.4-SNAPSHOT</version>
+    <version>15.3-SNAPSHOT</version>
   </parent>
   <artifactId>xwiki-platform-flamingo-skin-test-docker</artifactId>
   <name>XWiki Platform - Flamingo - Skin - Test - Functional Docker Tests</name>
@@ -110,21 +110,27 @@
       <artifactId>xwiki-platform-wiki-user-default</artifactId>
       <version>${project.version}</version>
     </dependency>
-    <!-- Needed for InvitationIT. -->
+    <!-- Required to create wikis -->
     <dependency>
       <groupId>org.xwiki.platform</groupId>
-      <artifactId>xwiki-platform-invitation-ui</artifactId>
+      <artifactId>xwiki-platform-wiki-creationjob</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-wiki-template-default</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Needed for PDFExportIT -->
+    <dependency>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-dashboard-ui</artifactId>
       <version>${project.version}</version>
       <type>xar</type>
     </dependency>
-    <!-- We currently need to depend on mail-ui for InvitationIT because it contains the Mail.SendMailConfigClass. 
-         We can not have administration-ui depend on mail-ui, because mail-ui already depends on administration-ui which 
-         would create a loop. mail-ui ust needs the configurable class stuff from administration-ui, so when that gets
-         refactored out, we can fix the dependency directly in administration-ui and not have anything here specific to
-         mail. -->
     <dependency>
       <groupId>org.xwiki.platform</groupId>
-      <artifactId>xwiki-platform-mail-ui</artifactId>
+      <artifactId>xwiki-platform-sandbox</artifactId>
       <version>${project.version}</version>
       <type>xar</type>
     </dependency>
@@ -157,16 +163,17 @@
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
-    <!-- Needed for the InvitationIT. -->
+    <!-- Needed or PDFExportIT -->
     <dependency>
       <groupId>org.xwiki.platform</groupId>
-      <artifactId>xwiki-platform-invitation-test-pageobject</artifactId>
+      <artifactId>xwiki-platform-export-pdf-test-pageobjects</artifactId>
       <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>com.icegreen</groupId>
-      <artifactId>greenmail-junit5</artifactId>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-search-solr-test-utils</artifactId>
+      <version>${project.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

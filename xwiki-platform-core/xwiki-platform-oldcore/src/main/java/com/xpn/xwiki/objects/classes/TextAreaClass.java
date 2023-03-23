@@ -22,6 +22,7 @@ package com.xpn.xwiki.objects.classes;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 import org.apache.commons.lang3.StringUtils;
@@ -33,6 +34,7 @@ import org.xwiki.edit.Editor;
 import org.xwiki.edit.EditorManager;
 import org.xwiki.rendering.syntax.Syntax;
 import org.xwiki.rendering.syntax.SyntaxContent;
+import org.xwiki.stability.Unstable;
 
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.doc.XWikiDocument;
@@ -346,6 +348,37 @@ public class TextAreaClass extends StringClass
         }
     }
 
+    /**
+     * Indicate if the content of this property should be executed in a restricted content (provided the type indicate
+     * that this content should be executed).
+     * 
+     * @return true if the content of this property should be executed in a restricted content, false otherwise
+     * @since 14.10
+     * @since 14.4.7
+     * @since 13.10.11
+     */
+    @Unstable
+    public boolean isRestricted()
+    {
+        return getIntValue("restricted", 0) == 1;
+    }
+
+    /**
+     * Indicate if the content of this property should be executed in a restricted content (provided the type indicate
+     * that this content should be executed).
+     * 
+     * @param restricted true if the content of this property should be executed in a restricted content, false
+     *            otherwise
+     * @since 14.10
+     * @since 14.4.7
+     * @since 13.10.11
+     */
+    @Unstable
+    public void setRestricted(boolean restricted)
+    {
+        setIntValue("restricted", restricted ? 1 : 0);
+    }
+
     @Override
     public void displayEdit(StringBuffer buffer, String name, String prefix, BaseCollection object,
         XWikiContext context)
@@ -353,6 +386,7 @@ public class TextAreaClass extends StringClass
         String editorType = getEditorType(context);
         EditorManager editorManager = Utils.getComponent(EditorManager.class);
         Editor<SyntaxContent> editor = editorManager.getDefaultEditor(SyntaxContent.class, editorType);
+        XWikiDocument ownerDocument = getObjectDocument(object, context);
         Map<String, Object> parameters = new HashMap<>();
         String fieldName = prefix + name;
         parameters.put("id", fieldName);
@@ -360,6 +394,7 @@ public class TextAreaClass extends StringClass
         parameters.put("cols", getSize());
         parameters.put("rows", getRows());
         parameters.put("disabled", isDisabled());
+        parameters.put("restricted", isRestricted() || (ownerDocument != null && ownerDocument.isRestricted()));
         parameters.put("sourceDocumentReference", object.getDocumentReference());
         Syntax syntax = null;
         String contentType = getContentType();
@@ -426,8 +461,16 @@ public class TextAreaClass extends StringClass
                             isolated ? sdoc.getDocumentReference() : null);
                     }
 
-                    buffer.append(
-                        context.getDoc().getRenderedContent(content, sdoc.getSyntax(), sdoc, isolated, context));
+                    // Make sure the right author is used to execute the textarea
+                    // Clone the document to void messaging with the cache
+                    if (!Objects.equals(sdoc.getAuthors().getEffectiveMetadataAuthor(),
+                        sdoc.getAuthors().getContentAuthor())) {
+                        sdoc = sdoc.clone();
+                        sdoc.getAuthors().setContentAuthor(sdoc.getAuthors().getEffectiveMetadataAuthor());
+                    }
+
+                    buffer.append(context.getDoc().getRenderedContent(content, sdoc.getSyntax(), isRestricted(), sdoc,
+                        isolated, context));
                 } else {
                     buffer.append(content);
                 }

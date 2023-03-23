@@ -17,38 +17,12 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-/*!
-#set ($paths = {
-  'xwiki-selectize': $xwiki.getSkinFile('uicomponents/suggest/xwiki.selectize.js', true)
-})
-#set ($discard = "#mimetypeimg('' '')")
-#set ($discard = $mimetypeMap.put('attachment', ['attach', 'attachment']))
-#foreach ($map in [$mimetypeMap, $extensionMap])
-  #foreach ($entry in $map.entrySet())
-    #set ($discard = $entry.value.set(0, $services.icon.getMetaData($entry.value.get(0))))
-    #set ($translationKey = "core.viewers.attachments.mime.$entry.value.get(1)")
-    #set ($discard = $entry.value.set(1, $services.localization.render($translationKey)))
-  #end
-#end
-#set ($l10nBundle = {
-  'upload': $services.localization.render('web.uicomponents.suggest.attachments.upload'),
-  'uploading': $services.localization.render('web.uicomponents.suggest.attachments.uploading', ['{0}']),
-  'uploadDone': $services.localization.render('web.uicomponents.suggest.attachments.uploadDone', ['{0}']),
-  'uploadFailed': $services.localization.render('web.uicomponents.suggest.attachments.uploadFailed', ['{0}'])
-})
-#[[*/
-// Start JavaScript-only code.
-(function(paths, contextPath, mimeTypeMap, extensionMap, l10nBundle) {
-  "use strict";
-
-require.config({paths});
-
 define('xwiki-attachments-store', ['jquery'], function($) {
   /**
    * Returns the REST URL that can be used to search or retrieve the attachments located inside the specified entity.
    */
   var getAttachmentsRestURL = function(entityReference, parameters) {
-    var path = [contextPath, 'rest'];
+    var path = [XWiki.contextPath, 'rest'];
     entityReference.getReversedReferenceChain().forEach(function(reference) {
       var restResourceType = reference.type === XWiki.EntityType.DOCUMENT ? 'page' :
         XWiki.EntityType.getName(reference.type);
@@ -141,79 +115,6 @@ define('xwiki-attachments-store', ['jquery'], function($) {
   };
 });
 
-define('xwiki-attachments-icon', ['jquery'], function($) {
-  var getAttachmentIcon = function(attachment) {
-    if (typeof attachment.mimeType === 'string' && attachment.mimeType.substring(0, 6) === 'image/') {
-      var url = attachment.xwikiRelativeUrl;
-      // If the image URL is relative to the current page or is absolute (HTTP) then we can pass the icon width as a
-      // query string parameter to allow the image to be resized on the server side.
-      if (url.substring(0, 1) === '/' || url.substring(0, 7) === 'http://') {
-        url += (url.indexOf('?') < 0 ? '?' : '&') + 'width=48';
-      }
-      var icon = {
-        iconSetType: 'IMAGE',
-        url: url
-      };
-      if (attachment.file) {
-        // Show the icon using the local file while the file is being uploaded.
-        icon.promise = readAsDataURL(attachment.file).then(function(dataURL) {
-          icon.url = dataURL;
-          return dataURL;
-        });
-      }
-      return icon;
-    } else {
-      return getIcon(attachment.mimeType, attachment.name);
-    }
-  };
-
-  var readAsDataURL = function(file) {
-    return new Promise((resolve, reject) => {
-      var fileReader = new FileReader();
-      fileReader.onload = function(event) {
-        resolve(event.target.result);
-      };
-      fileReader.readAsDataURL(file);
-    });
-  };
-
-  var getIcon = function(mimeType, fileName) {
-    var extension = fileName.substring(fileName.lastIndexOf('.') + 1);
-    if (mimeTypeMap.hasOwnProperty(mimeType)) {
-      return mimeTypeMap[mimeType][0];
-    } else if (extensionMap.hasOwnProperty(extension)) {
-      return extensionMap[extension][0];
-    } else {
-      var mimeTypePrefix = mimeType.substring(0, mimeType.indexOf('/') + 1);
-      if (mimeTypeMap.hasOwnProperty(mimeTypePrefix)) {
-        return mimeTypeMap[mimeTypePrefix][0];
-      } else {
-        return mimeTypeMap['attachment'][0];
-      }
-    }
-  };
-
-  var loadAttachmentIcon = function(attachment) {
-    return new Promise((resolve, reject) => {
-      if (attachment.icon.iconSetType === 'IMAGE') {
-        var image = new Image();
-        image.onload = function() {
-          resolve(attachment);
-        };
-        image.src = attachment.icon.url;
-      } else {
-        // Nothing to load.
-        resolve(attachment);
-      }
-    });
-  };
-
-  return {
-    getIcon: getAttachmentIcon,
-    loadIcon: loadAttachmentIcon
-  };
-});
-
 define('xwiki-attachments-filter', ['jquery'], function($) {
   var filterAttachments = function(attachments, accept) {
     var allowedFileTypes = [];
@@ -288,25 +189,14 @@ define('xwiki-file-picker', ['jquery'], function($) {
   return {pickLocalFiles};
 });
 
-define('xwiki-l10n', ['jquery'], function($) {
-  var withParams = function(translation) {
-    return function() {
-      var result = translation;
-      $.each(arguments, function(index, value) {
-        result = result.replace('{' + index + '}', value);
-      });
-      return result;
-    };
-  };
-
-  return function(entries) {
-    $.each(entries, function(key, value) {
-      if (typeof value === 'string' && value.match(/{\d+}/)) {
-        entries[key] = withParams(value);
-      }
-    });
-    return entries;
-  };
+define('xwiki-suggestAttachments-messages', {
+  prefix: 'web.uicomponents.suggest.attachments.',
+  keys: [
+    'upload',
+    'uploading',
+    'uploadDone',
+    'uploadFailed'
+  ]
 });
 
 define('xwiki-suggestAttachments', [
@@ -315,11 +205,9 @@ define('xwiki-suggestAttachments', [
   'xwiki-attachments-icon',
   'xwiki-attachments-filter',
   'xwiki-file-picker',
-  'xwiki-l10n',
+  'xwiki-l10n!xwiki-suggestAttachments-messages',
   'xwiki-selectize'
-], function($, attachmentsStore, attachmentsIcon, attachmentsFilter, filePicker, L10n) {
-  var l10n = L10n(l10nBundle);
-
+], function($, attachmentsStore, attachmentsIcon, attachmentsFilter, filePicker, l10n) {
   var getSelectizeOptions = function(select) {
     return {
       maxOptions: 10,
@@ -560,7 +448,7 @@ define('xwiki-suggestAttachments', [
 
   var uploadFileAndShowProgress = function(attachment, selectize) {
     var attachmentName = $('<em></em>').text(attachment.label).prop('outerHTML');
-    var notification = new XWiki.widgets.Notification(l10n.uploading(attachmentName), 'inprogress');
+    var notification = new XWiki.widgets.Notification(l10n.get('uploading', attachmentName), 'inprogress');
     attachment.data.upload = {
       status: 'pending',
       progress: {
@@ -580,12 +468,12 @@ define('xwiki-suggestAttachments', [
     }).then(attachment => {
       attachment.data.upload = {status: 'done'};
       selectize.updateOption(attachment.value, attachment);
-      notification.replace(new XWiki.widgets.Notification(l10n.uploadDone(attachmentName), 'done'));
+      notification.replace(new XWiki.widgets.Notification(l10n.get('uploadDone', attachmentName), 'done'));
       return attachment;
     }).catch(() => {
       attachment.data.upload.status = 'failed';
       selectize.updateOption(attachment.value, attachment);
-      notification.replace(new XWiki.widgets.Notification(l10n.uploadFailed(attachmentName), 'error'));
+      notification.replace(new XWiki.widgets.Notification(l10n.get('uploadFailed', attachmentName), 'error'));
       return Promise.reject();
     });
   };
@@ -745,6 +633,3 @@ require(['jquery', 'xwiki-suggestAttachments', 'xwiki-attachmentResourcePicker',
   $(document).on('xwiki:dom:updated', init);
   $(init);
 });
-
-// End JavaScript-only code.
-}).apply(']]#', $jsontool.serialize([$paths, $request.contextPath, $mimetypeMap, $extensionMap, $l10nBundle]));

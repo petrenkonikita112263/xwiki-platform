@@ -30,7 +30,6 @@ import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.WikiReference;
 import org.xwiki.notifications.NotificationException;
 import org.xwiki.notifications.NotificationFormat;
-import org.xwiki.stability.Unstable;
 
 /**
  * Provide an interface for interacting with user notification filters preferences.
@@ -56,7 +55,6 @@ public interface NotificationFilterPreferenceManager
      * @throws NotificationException if an error occurs
      * @since 13.3RC1
      */
-    @Unstable
     default Collection<NotificationFilterPreference> getFilterPreferences(WikiReference wikiReference)
         throws NotificationException
     {
@@ -128,7 +126,6 @@ public interface NotificationFilterPreferenceManager
      *
      * @since 13.3RC1
      */
-    @Unstable
     default void deleteFilterPreference(WikiReference wikiReference, String filterPreferenceId)
         throws NotificationException
     {
@@ -158,7 +155,6 @@ public interface NotificationFilterPreferenceManager
      *
      * @since 13.3RC1
      */
-    @Unstable
     default void setFilterPreferenceEnabled(WikiReference wikiReference, String filterPreferenceId, boolean enabled)
         throws NotificationException
     {

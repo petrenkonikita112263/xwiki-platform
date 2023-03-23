@@ -21,140 +21,111 @@ package org.xwiki.store.filesystem.internal;
 
 import java.io.IOException;
 import java.util.Collection;
-import java.util.Map;
+import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 
 import javax.inject.Inject;
 import javax.inject.Provider;
 import javax.inject.Singleton;
-import javax.servlet.http.HttpSessionEvent;
-import javax.servlet.http.HttpSessionListener;
+import javax.servlet.http.HttpSession;
 import javax.servlet.http.Part;
 
-import org.apache.commons.lang3.math.NumberUtils;
+import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.xwiki.attachment.validation.AttachmentValidationException;
+import org.xwiki.attachment.validation.AttachmentValidator;
 import org.xwiki.component.annotation.Component;
-import org.xwiki.component.manager.ComponentLifecycleException;
-import org.xwiki.component.phase.Disposable;
-import org.xwiki.component.phase.Initializable;
-import org.xwiki.component.phase.InitializationException;
+import org.xwiki.internal.attachment.XWikiAttachmentAccessWrapper;
 import org.xwiki.model.reference.DocumentReference;
-import org.xwiki.model.reference.SpaceReference;
 import org.xwiki.store.TemporaryAttachmentException;
 import org.xwiki.store.TemporaryAttachmentSessionsManager;
 
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.doc.XWikiAttachment;
-import com.xpn.xwiki.plugin.fileupload.FileUploadPlugin;
+import com.xpn.xwiki.doc.XWikiDocument;
 
 /**
  * Default implementation of {@link TemporaryAttachmentSessionsManager}.
- * Note that this component also implements {@link HttpSessionListener} so that the cache is properly clean up whenever
- * a session is destroyed.
  *
  * @version $Id$
  * @since 14.3RC1
  */
 @Component
 @Singleton
-public class DefaultTemporaryAttachmentSessionsManager
-    implements TemporaryAttachmentSessionsManager, Initializable, Disposable,
-    HttpSessionListener
+public class DefaultTemporaryAttachmentSessionsManager implements TemporaryAttachmentSessionsManager
 {
-    private Map<String, TemporaryAttachmentSession> temporaryAttachmentSessionMap;
+    private static final String ATTRIBUTE_KEY = "xwikiTemporaryAttachments";
 
     @Inject
     private Provider<XWikiContext> contextProvider;
 
-    @Override
-    public void initialize() throws InitializationException
-    {
-        this.temporaryAttachmentSessionMap = new ConcurrentHashMap<>();
-    }
+    @Inject
+    private Provider<AttachmentValidator> attachmentValidator;
 
-    @Override
-    public void dispose() throws ComponentLifecycleException
-    {
-        this.temporaryAttachmentSessionMap.values().forEach(TemporaryAttachmentSession::dispose);
-    }
+    @Inject
+    private Logger logger;
 
-    @Override
-    public void sessionCreated(HttpSessionEvent httpSessionEvent)
-    {
-        // Nothing should be done here.
-    }
-
-    /**
-     * Accessor to the map of temporary attachment sessions. Mainly for test purpose.
-     *
-     * @return the map of temporary attachment session.
-     */
-    protected Map<String, TemporaryAttachmentSession> getTemporaryAttachmentSessionMap()
-    {
-        return temporaryAttachmentSessionMap;
-    }
-
-    private String getSessionId()
+    private HttpSession getSession()
     {
         XWikiContext context = this.contextProvider.get();
-        return context.getRequest().getSession().getId();
-    }
-
-    @Override
-    public void sessionDestroyed(HttpSessionEvent httpSessionEvent)
-    {
-        String sessionId = httpSessionEvent.getSession().getId();
-        if (this.temporaryAttachmentSessionMap.containsKey(sessionId)) {
-            TemporaryAttachmentSession temporaryAttachmentSession =
-                this.temporaryAttachmentSessionMap.remove(sessionId);
-            temporaryAttachmentSession.dispose();
-        }
-    }
-
-    private long getUploadMaxSize(DocumentReference documentReference)
-    {
-        XWikiContext context = this.contextProvider.get();
-        SpaceReference lastSpaceReference = documentReference.getLastSpaceReference();
-        String uploadMaxSizeValue = context.getWiki()
-            .getSpacePreference(FileUploadPlugin.UPLOAD_MAXSIZE_PARAMETER, lastSpaceReference, context);
-        return NumberUtils.toLong(uploadMaxSizeValue, FileUploadPlugin.UPLOAD_DEFAULT_MAXSIZE);
+        return context.getRequest().getSession();
     }
 
     private TemporaryAttachmentSession getOrCreateSession()
     {
         TemporaryAttachmentSession temporaryAttachmentSession;
-        String sessionId = getSessionId();
-        if (this.temporaryAttachmentSessionMap.containsKey(sessionId)) {
-            temporaryAttachmentSession = this.temporaryAttachmentSessionMap.get(sessionId);
-        } else {
-            temporaryAttachmentSession = new TemporaryAttachmentSession(sessionId);
-            this.temporaryAttachmentSessionMap.put(sessionId, temporaryAttachmentSession);
+        HttpSession session = this.getSession();
+        temporaryAttachmentSession = (TemporaryAttachmentSession) session.getAttribute(ATTRIBUTE_KEY);
+        if (temporaryAttachmentSession == null) {
+            temporaryAttachmentSession = new TemporaryAttachmentSession(session.getId());
+            session.setAttribute(ATTRIBUTE_KEY, temporaryAttachmentSession);
         }
         return temporaryAttachmentSession;
     }
 
     @Override
     public XWikiAttachment uploadAttachment(DocumentReference documentReference, Part part)
-        throws TemporaryAttachmentException
+        throws TemporaryAttachmentException, AttachmentValidationException
     {
-        XWikiAttachment xWikiAttachment;
-        long uploadMaxSize = getUploadMaxSize(documentReference);
-        if (part.getSize() > uploadMaxSize) {
-            throw new TemporaryAttachmentException(String.format(
-                "The file size [%s] is larger than the upload max size [%s]", part.getSize(), uploadMaxSize));
-        }
+        return uploadAttachment(documentReference, part, null);
+    }
+
+    @Override
+    public XWikiAttachment uploadAttachment(DocumentReference documentReference, Part part, String filename)
+        throws TemporaryAttachmentException, AttachmentValidationException
+    {
         TemporaryAttachmentSession temporaryAttachmentSession = getOrCreateSession();
         XWikiContext context = this.contextProvider.get();
         try {
-            xWikiAttachment = new XWikiAttachment();
-            xWikiAttachment.setFilename(part.getSubmittedFileName());
+            XWikiAttachment xWikiAttachment = new XWikiAttachment();
+            String actualFilename;
+            if (StringUtils.isNotBlank(filename)) {
+                actualFilename = filename;
+            } else {
+                actualFilename = part.getSubmittedFileName();
+            }
+            xWikiAttachment.setFilename(actualFilename);
             xWikiAttachment.setContent(part.getInputStream());
-            xWikiAttachment.setAuthorReference(context.getAuthorReference());
+            xWikiAttachment.setAuthorReference(context.getUserReference());
+            // Initialize an empty document with the right document reference and locale. We don't set the actual 
+            // document since it's a temporary attachment, but it is still useful to have a minimal knowledge of the
+            // document it is stored for.
+            xWikiAttachment.setDoc(new XWikiDocument(documentReference, documentReference.getLocale()), false);
+
+            this.attachmentValidator.get()
+                .validateAttachment(new XWikiAttachmentAccessWrapper(xWikiAttachment, context));
             temporaryAttachmentSession.addAttachment(documentReference, xWikiAttachment);
+            return xWikiAttachment;
         } catch (IOException e) {
             throw new TemporaryAttachmentException("Error while reading the content of a request part", e);
         }
-        return xWikiAttachment;
+    }
+
+    @Override
+    public void temporarilyAttach(XWikiAttachment attachment, DocumentReference documentReference)
+    {
+        TemporaryAttachmentSession temporaryAttachmentSession = getOrCreateSession();
+        temporaryAttachmentSession.addAttachment(documentReference, attachment);
     }
 
     @Override
@@ -183,5 +154,22 @@ public class DefaultTemporaryAttachmentSessionsManager
     {
         TemporaryAttachmentSession temporaryAttachmentSession = getOrCreateSession();
         return temporaryAttachmentSession.removeAttachments(documentReference);
+    }
+
+    @Override
+    public void attachTemporaryAttachmentsInDocument(XWikiDocument document, List<String> fileNames)
+    {
+        if (!fileNames.isEmpty()) {
+            for (String temporaryUploadedFile : fileNames) {
+                Optional<XWikiAttachment> uploadedAttachmentOpt =
+                    getUploadedAttachment(document.getDocumentReference(), temporaryUploadedFile);
+                uploadedAttachmentOpt.ifPresent(uploadedAttachment -> {
+                    XWikiAttachment previousAttachment = document.setAttachment(uploadedAttachment);
+                    if (previousAttachment != null) {
+                        uploadedAttachment.setVersion(previousAttachment.getNextVersion());
+                    }
+                });
+            }
+        }
     }
 }

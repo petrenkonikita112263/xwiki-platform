@@ -27,6 +27,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+import org.apache.commons.text.StringSubstitutor;
+import org.apache.commons.text.lookup.StringLookup;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.Model;
 import org.apache.maven.model.building.DefaultModelBuilderFactory;
@@ -103,11 +105,21 @@ public class MavenResolver
      */
     public String getPropertyFromCurrentPOM(String propertyName) throws Exception
     {
-        String propertyValue = getModelFromCurrentPOM().getProperties().getProperty(propertyName);
+        String propertyValue = getPropertiesFromCurrentPOM().getProperty(propertyName);
         if (propertyValue == null) {
             throw new Exception(String.format("Missing property [%s] in the current pom.xml", propertyName));
         }
         return propertyValue;
+    }
+
+    /**
+     * @return the resolved POM properties
+     * @throws Exception if the properties cannot be resolved
+     * @since 15.2RC1
+     */
+    public Properties getPropertiesFromCurrentPOM() throws Exception
+    {
+        return getModelFromCurrentPOM().getProperties();
     }
 
     /**
@@ -283,5 +295,29 @@ public class MavenResolver
             version = model.getVersion();
         }
         return version;
+    }
+
+    /**
+     * @param value the value in which to resolve Maven properties
+     * @return the resolved value
+     */
+    public String replacePropertiesFromCurrentPOM(String value)
+    {
+        StringSubstitutor substitutor = new StringSubstitutor(new StringLookup()
+        {
+            @Override
+            public String lookup(String key)
+            {
+                try {
+                    return getPropertyFromCurrentPOM(key);
+                } catch (Exception e) {
+                    LOGGER.error("Failed to resolve Maven property [{}] in value [{}]", key, value, e);
+                }
+
+                return null;
+            }
+        });
+
+        return substitutor.replace(value);
     }
 }

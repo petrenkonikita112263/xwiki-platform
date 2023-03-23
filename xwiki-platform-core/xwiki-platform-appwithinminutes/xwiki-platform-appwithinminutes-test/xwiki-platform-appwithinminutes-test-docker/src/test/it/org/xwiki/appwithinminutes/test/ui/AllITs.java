@@ -70,7 +70,25 @@ public class AllITs
 
     @Nested
     @DisplayName("Application name test")
-    class NestedApplicationNameIt extends ApplicationNameIt
+    class NestedApplicationNameIT extends ApplicationNameIT
+    {
+    }
+    
+    @Nested
+    @DisplayName("User class field test")
+    class NestedUserClassFieldIT extends UserClassFieldIT
+    {
+    }
+
+    @Nested
+    @DisplayName("Class Editor tests")
+    class NestedClassEditorIT extends ClassEditorIT
+    {
+    }
+
+    @Nested
+    @DisplayName("Without script right test")
+    class NestedWithoutScriptRightIT extends WithoutScriptRightIT
     {
     }
 }

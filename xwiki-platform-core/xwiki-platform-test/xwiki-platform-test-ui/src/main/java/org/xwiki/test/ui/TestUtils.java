@@ -40,6 +40,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -85,6 +86,8 @@ import org.xwiki.model.reference.EntityReferenceSerializer;
 import org.xwiki.model.reference.LocalDocumentReference;
 import org.xwiki.model.reference.ObjectPropertyReference;
 import org.xwiki.model.reference.ObjectReference;
+import org.xwiki.model.reference.SpaceReference;
+import org.xwiki.rendering.syntax.Syntax;
 import org.xwiki.rest.model.jaxb.Page;
 import org.xwiki.rest.model.jaxb.Property;
 import org.xwiki.rest.model.jaxb.Xwiki;
@@ -208,10 +211,17 @@ public class TestUtils
 
     private static String urlPrefix = XWikiExecutor.URL;
 
-    /** Cached secret token. TODO cache for each user. */
+    /**
+     * Cached secret token. TODO cache for each user.
+     */
     private String secretToken = null;
 
     private HttpClient httpClient;
+
+    /**
+     * @since 15.2RC1
+     */
+    private WCAGUtils wcagUtils = new WCAGUtils();
 
     /**
      * @since 8.0M1
@@ -286,6 +296,14 @@ public class TestUtils
         return TestUtils.context.getDriver();
     }
 
+    /**
+     * @since 15.2RC1
+     * @return the utils concerning wcag.
+     */
+    public WCAGUtils getWCAGUtils()
+    {
+        return this.wcagUtils;
+    }
     public Session getSession()
     {
         return this.new Session(getDriver().manage().getCookies(), getSecretToken());
@@ -553,19 +571,67 @@ public class TestUtils
     }
 
     /**
-     * Creates the Admin user and add it to the XWikiAdminGroup.
+     * Creates the Admin user, add it to the XWikiAdminGroup and login.
+     * Note that this method requires to be superadmin to be effective.
      *
      * @since 12.2
      */
     public void createAdminUser()
     {
-        createUser(ADMIN_CREDENTIALS.getUserName(), ADMIN_CREDENTIALS.getPassword(), null);
-        addObject("XWiki", "XWikiAdminGroup", "XWiki.XWikiGroups", "member", "XWiki.Admin");
+        createAdminUser(false);
+    }
+
+    /**
+     * Creates the Admin user, add it to the XWikiAdminGroup and login.
+     * Note that this method requires to be superadmin to be effective.
+     *
+     * @param programming true of the user should also be given programming right
+     * @since 15.1RC1
+     * @since 14.10.5
+     */
+    public void createAdminUser(boolean programming)
+    {
+        String username = ADMIN_CREDENTIALS.getUserName();
+        String password = ADMIN_CREDENTIALS.getPassword();
+        LocalDocumentReference userReference = new LocalDocumentReference("XWiki", username);
+        Page userPage = rest().page(userReference);
+        userPage.setObjects(new org.xwiki.rest.model.jaxb.Objects());
+        org.xwiki.rest.model.jaxb.Object userObject = RestTestUtils.object("XWiki.XWikiUsers");
+
+        // Set password
+        userObject.getProperties().add(RestTestUtils.property("password", password));
+        userPage.getObjects().getObjectSummaries().add(userObject);
+
+        // Save the user page
+        try {
+            rest().save(userPage);
+        } catch (Exception e) {
+            fail("Failed to save the user with name [" + username + "]", e);
+        }
+
+        // Add the user to XWikiAllGroup
+        try {
+            rest().addObject(new LocalDocumentReference("XWiki", "XWikiAllGroup"), "XWiki.XWikiGroups", "member", serializeReference(userReference));
+        } catch (Exception e) {
+            fail("Failed to add the user in the XWikiAllGroup group", e);
+        }
+
+        // Add the user to XWikiAdminGroup group (before we login as the user does not have admin right at first)
+        try {
+            rest().addObject(new LocalDocumentReference("XWiki", "XWikiAdminGroup"), "XWiki.XWikiGroups", "member", serializeReference(userReference));
+        } catch (Exception e) {
+            fail("Failed to add the user in the XWikiAdminGroup group", e);
+        }
+
+        // Give ADMIN right (and maybe PROGRAMMING right) to XWikiAdminGroup
+        setGlobalRights("XWiki.XWikiAdminGroup", "", programming ? "admin,programming" : "admin", true);
+
+        // Also login as Admin user
         loginAsAdmin();
     }
 
     /**
-     * Add or update a {@code XWikiGlobalRights} xobject to the current wiki's {@code XWikiPrefrences} document.
+     * Add or update a {@code XWikiGlobalRights} xobject to the current wiki's {@code XWikiPreferences} document.
      *
      * @param groups the comma-separated list of groups that will have the rights (e.g. {@code XWiki.XWikiAdminGroup}.
      *               Can be empty or null
@@ -577,9 +643,8 @@ public class TestUtils
      */
     public void setGlobalRights(String groups, String users, String rights, boolean enabled)
     {
-        EntityReference xwikiPreferencesReference = new EntityReference("XWikiPreferences", EntityType.DOCUMENT,
-            new EntityReference("XWiki", EntityType.SPACE));
-        setRights(xwikiPreferencesReference, "XWiki.XWikiGlobalRights", groups, users, rights, enabled);
+        setRights(new LocalDocumentReference("XWiki", "XWikiPreferences"), "XWiki.XWikiGlobalRights", groups, users,
+            rights, enabled);
     }
 
     /**
@@ -591,7 +656,7 @@ public class TestUtils
      * @param users the comma-separated list of users that will have the rights (e.g. {@code XWiki.Admin}. Can be
      *              empty of null
      * @param rights the comma-separated list of rights to give (e.g. {@code edit,admin})
-     * @param enabled true if the rights should be allowed, false if they should be disabled
+     * @param enabled true if the rights should be allowed, false if they should be denied
      * @since 12.2
      */
     public void setRights(EntityReference entityReference, String groups, String users, String rights, boolean enabled)
@@ -599,13 +664,42 @@ public class TestUtils
         setRights(entityReference, "XWiki.XWikiRights", groups, users, rights, enabled);
     }
 
+    /**
+     * Add or update a {@code XWikiRights} xobject to the specified space reference.
+     *
+     * @param space the reference to the space for which to set rights for
+     * @param groups the comma-separated list of groups that will have the rights (e.g. {@code XWiki.XWikiAdminGroup}.
+     *               Can be empty or null
+     * @param users the comma-separated list of users that will have the rights (e.g. {@code XWiki.Admin}. Can be
+     *              empty of null
+     * @param rights the comma-separated list of rights to give (e.g. {@code edit,admin})
+     * @param enabled true if the rights should be allowed, false if they should be denied
+     * @since 14.10
+     */
+    public void setRightsOnSpace(SpaceReference space, String groups, String users, String rights, boolean enabled)
+    {
+        DocumentReference documentReference = new DocumentReference("WebPreferences", space);
+        setRights(documentReference, "XWiki.XWikiGlobalRights", groups, users, rights, enabled);
+    }
+
     private void setRights(EntityReference entityReference, String rightClassName, String groups, String users,
         String rights, boolean enabled)
     {
+        // Normalize users and groups
         String normalizedUsers = users == null ? "" : users;
         String normalizedGroups = groups == null ? "" : groups;
-        addObject(entityReference, rightClassName, "groups", normalizedGroups, "levels", rights,
-            "users", normalizedUsers, "allow", enabled ? "1" : "0");
+
+        // Add new rights object
+        try {
+            rest().addObject(entityReference, rightClassName,
+                "groups", normalizedGroups,
+                "users", normalizedUsers,
+                "levels", rights,
+                "allow", enabled ? 1 : 0);
+        } catch (Exception e) {
+            fail("Failed to add rights object of class [" + rightClassName + "] with groups [" + normalizedGroups
+                + "], users [" + normalizedUsers + "], rights [" + rights + "] and enabled [" + enabled + "]", e);
+        }
     }
 
     public ViewPage gotoPage(String space, String page)
@@ -1101,15 +1195,23 @@ public class TestUtils
      */
     public String executeAndGetBodyAsString(EntityReference reference, Map<String, ?> queryParameters) throws Exception
     {
-        String url = getURL(reference, "get", toQueryString(queryParameters));
+        gotoPage(getURL(reference, "get", toQueryString(queryParameters)));
+        
+        return getDriver().findElementWithoutWaiting(By.tagName("body")).getText();
+    }
 
-        GetMethod getMethod = executeGet(url);
+    /**
+     * @since 15.1RC1
+     * @since 14.10.5
+     */
+    public String executeWiki(String wikiContent, Syntax wikiSyntax) throws Exception
+    {
+        LocalDocumentReference reference =
+            new LocalDocumentReference(List.of("Test", "Execute"), UUID.randomUUID().toString());
 
-        String result = getMethod.getResponseBodyAsString();
+        rest().savePage(reference, wikiContent, wikiSyntax.toIdString(), null, null);
 
-        getMethod.releaseConnection();
-
-        return result;
+        return executeAndGetBodyAsString(reference, null);
     }
 
     /**
@@ -1129,7 +1231,7 @@ public class TestUtils
         for (EntityReference singleReference : spaceReference.removeParent(wikiReference).getReversedReferenceChain()) {
             path.add(singleReference.getName());
         }
-        if (reference.getType() == EntityType.DOCUMENT) {
+        if (reference.getType() == EntityType.DOCUMENT || reference.getType() == EntityType.ATTACHMENT) {
             path.add(reference.getName());
         }
         return path;
@@ -1141,6 +1243,14 @@ public class TestUtils
     public String getCurrentWiki()
     {
         return this.currentWiki;
+    }
+
+    /**
+     * @since 14.5
+     */
+    public void setCurrentWiki(String currentWiki)
+    {
+        this.currentWiki = currentWiki;
     }
 
     /**
@@ -1180,7 +1290,7 @@ public class TestUtils
      */
     public String getBaseBinURL()
     {
-        return getBaseURL() + "bin/";
+        return getBaseBinURL(this.currentWiki);
     }
 
     /**
@@ -1333,7 +1443,7 @@ public class TestUtils
     }
 
     /**
-     * This class represents all cookies stored in the browser. Use with getSession() and setSession()
+     *This class represents all cookies stored in the browser. Use with getSession() and setSession()
      */
     public class Session
     {
@@ -1564,9 +1674,11 @@ public class TestUtils
     {
         StringBuilder builder = new StringBuilder();
 
-        for (Map.Entry<String, ?> entry : queryParameters.entrySet()) {
-            addQueryStringEntry(builder, entry.getKey(), entry.getValue());
-            builder.append('&');
+        if (queryParameters != null) {
+            for (Map.Entry<String, ?> entry : queryParameters.entrySet()) {
+                addQueryStringEntry(builder, entry.getKey(), entry.getValue());
+                builder.append('&');
+            }
         }
 
         return builder.toString();
@@ -2089,7 +2201,21 @@ public class TestUtils
 
     public String getString(String path, Map<String, ?> queryParams) throws Exception
     {
-        try (InputStream inputStream = getInputStream(getBaseURL(), path, queryParams)) {
+        return getString(getBaseURL(), path, queryParams);
+    }
+
+    /**
+     * Extended version to work in a docker context.
+     *
+     * @param baseURL the base url
+     * @param path an additional path added after the base url
+     * @param queryParams additional query parameter added to the computed url
+     * @return the context of the computed url
+     * @throws Exception in case of error when executing the request
+     */
+    public String getString(String baseURL, String path, Map<String, ?> queryParams) throws Exception
+    {
+        try (InputStream inputStream = getInputStream(baseURL, path, queryParams)) {
             return IOUtils.toString(inputStream);
         }
     }
@@ -2656,6 +2782,33 @@ public class TestUtils
         {
             return TestUtils.assertStatusCodes(executePost(ObjectsResource.class, obj, toElements(obj, true)), release,
                 STATUS_CREATED);
+        }
+
+        /**
+         * @since 15.2RC1
+         * @since 15.1
+         * @since 14.10.6
+         */
+        private void addObject(EntityReference documentReference, String rightClassName, Object... properties)
+            throws Exception
+        {
+            // Make sure the page exist (object add fail otherwise)
+            // TODO: improve object add API to allow adding an object in a page that does not yet exist
+            if (!exists(documentReference)) {
+                savePage(documentReference);
+            }
+
+            // Create the object
+            org.xwiki.rest.model.jaxb.Object rightsObject = object(documentReference, rightClassName);
+            for (int i = 0; i < properties.length; i += 2) {
+                String name = (String) properties[i + 0];
+                Object value = properties[i + 1];
+
+                rightsObject.withProperties(RestTestUtils.property(name, value));
+            }
+
+            // Add the object
+            add(rightsObject);
         }
 
         /**

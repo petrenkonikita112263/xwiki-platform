@@ -22,6 +22,7 @@ package org.xwiki.image.style.internal;
 import java.util.List;
 import java.util.Set;
 
+import javax.inject.Named;
 import javax.inject.Provider;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -83,7 +84,7 @@ class DefaultImageStyleManagerTest
         new DocumentReference("wiki", "space", "docfail");
 
     @RegisterExtension
-    LogCaptureExtension logCapture = new LogCaptureExtension(LogLevel.WARN);
+    private LogCaptureExtension logCapture = new LogCaptureExtension(LogLevel.WARN);
 
     @InjectMockComponents
     private DefaultImageStyleManager manager;
@@ -98,6 +99,7 @@ class DefaultImageStyleManagerTest
     private ExecutionContextManager contextManager;
 
     @MockComponent
+    @Named("current")
     private DocumentReferenceResolver<String> documentReferenceResolver;
 
     @Mock

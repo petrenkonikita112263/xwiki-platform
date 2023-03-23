@@ -1821,15 +1821,17 @@ document.observe("xwiki:dom:loaded", function() {
  * Intercept asynchronous HTTP requests and look for the custom X-XWIKI-HTML-HEAD and X-XWIKI-HTML-SCRIPTS response
  * headers that are used by the server to extend the page HTML head asynchronously.
  */
-require(['jquery'], function($) {
+ (function() {
   /**
    * Collect the URLs of all the external stylesheets an JavaScript files that are already loaded (or in the process of
    * being loaded) because their associated tag is in the DOM.
    */
   var getLoadedResources = function() {
-    return $('link[href], script[src]').map(function() {
-      return $(this).attr('href') || $(this).attr('src');
-    }).get();
+    var resources = [];
+    [...document.querySelectorAll('link[href], script[src]')].forEach(function(resource) {
+      resources.push(resource.getAttribute('href') || resource.getAttribute('src'))
+    });
+    return resources;
   };
 
   /**
@@ -1840,17 +1842,27 @@ require(['jquery'], function($) {
    */
   var extendPageHead = function(html) {
     var loadedResources;
-    var contentToInject = $('<div></div>').html(html);
-    // Remove resources that are already loaded.
-    contentToInject.find('link[href], script[src]').filter(function() {
+    // Force the execution of script tags when adding them dynamically, since inserting via innerHTML will not trigger
+    // it.
+    var range = document.createRange();
+    range.setStart(document.head, 0);
+    var contentToInject = range.createContextualFragment(html);
+    // Inject only the resources that are not already loaded.
+    [...contentToInject.querySelectorAll('link[href], script[src]')].forEach(function(resource) {
       if (!loadedResources) {
         loadedResources = getLoadedResources();
       }
-      var url = $(this).attr('href') || $(this).attr('src');
-      return loadedResources.indexOf(url) >= 0;
-    }).remove();
-    // Inject the remaining part into the page head.
-    contentToInject.contents().appendTo('head');
+      var url = resource.getAttribute('href') || resource.getAttribute('src');
+      if(loadedResources.indexOf(url) < 0) {
+        if (resource.getAttribute('src') && !resource.hasAttribute('async')) {
+          // Scripts that are dynamically created and added to the document are async by default, which means there are
+          // no guarantees they will execute in the same order they were added.
+          // See: https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script#compatibility_notes
+          resource.async = false;
+        }
+        document.head.appendChild(resource);
+      }
+    });
   };
 
   /**
@@ -1870,7 +1882,8 @@ require(['jquery'], function($) {
   };
 
   /**
-   * Overwrite the XMLHttpRequest#open() method in order to add our load listener on all requests made from this page.
+   * Overwrite the XMLHttpRequest#open() method in order to inject the form token and to add our load listener on all
+   * requests made from this page.
    */
   var interceptXMLHttpRequest = function() {
     var originalOpen = window.XMLHttpRequest.prototype.open;
@@ -1878,18 +1891,48 @@ require(['jquery'], function($) {
       this.addEventListener('load', function() {
         handleResponseHeaders(this.getResponseHeader.bind(this));
       });
-      return originalOpen.apply(this, arguments);
+      const result = originalOpen.apply(this, arguments);
+      // Send the form token on same-origin requests only to prevent leaking the token to third-parties.
+      if (arguments.length >= 2 && window.location.origin === (new URL(arguments[1], window.location.href)).origin) {
+        // Make sure this is really safe in case this should be called in some unexpected situation.
+        const formToken = document?.documentElement?.dataset?.xwikiFormToken;
+        if (formToken) {
+          this.setRequestHeader("XWiki-Form-Token", formToken);
+        }
+      }
+      return result;
     };
   };
 
   /**
-   * Overwrite the fetch function in order to add our own response callback on all fetch requests made from this page.
+   * Overwrite the fetch function in order to inject the form token and add our own response callback on all fetch
+   * requests made from this page.
    */
   var interceptFetch = function() {
     var originalFetch = window.fetch;
     if (originalFetch) {
       window.fetch = function() {
-        return originalFetch.apply(this, arguments).then(function(response) {
+        // Inject the form token.
+        let modifiedArguments = arguments;
+        // Make sure this is really safe in case this should be called in some unexpected situation.
+        const formToken = document?.documentElement?.dataset?.xwikiFormToken;
+        if (formToken) {
+          let request = null;
+          // Convert the arguments to a request, as Request expects the same arguments as fetch() but provides
+          // convenient ways to modify the headers (and fetch accepts a request as parameter).
+          if (arguments.length === 1 && arguments[0] instanceof Request) {
+            request = arguments[0];
+          } else if (arguments.length) {
+            request = new Request(...arguments);
+          }
+          // Only handle expected cases and same-origin requests to prevent leaking the token to third-parties,
+          // leave the arguments alone otherwise.
+          if (request !== null && window.location.origin === (new URL(request.url, window.location.href).origin)) {
+            request.headers.append("XWiki-Form-Token", formToken);
+            modifiedArguments = [request];
+          }
+        }
+        return originalFetch.apply(this, modifiedArguments).then(function(response) {
           handleResponseHeaders(response.headers.get.bind(response.headers));
           return response;
         });
@@ -1900,4 +1943,4 @@ require(['jquery'], function($) {
   // Intercept right away, as early as possible, in order to be sure we catch all requests.
   interceptXMLHttpRequest();
   interceptFetch();
-});
+})();

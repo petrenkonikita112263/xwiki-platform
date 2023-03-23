@@ -25,7 +25,6 @@
 #end
 #set ($paths = {
   'jsTree': $services.webjars.url('jstree', "jstree$jsExtension"),
-  'JobRunner': $services.webjars.url('org.xwiki.platform:xwiki-platform-job-webjar', "jobRunner$jsExtension"),
   'tree-finder': $services.webjars.url('org.xwiki.platform:xwiki-platform-tree-webjar', "finder$jsExtension"),
   'tree': $services.webjars.url('org.xwiki.platform:xwiki-platform-tree-webjar', "tree$jsExtension")
 })
@@ -91,6 +90,7 @@ require(['jquery', 'xwiki-meta', 'tree'], function($, xm) {
       var deleteTree = questionForm.find('.deleteTree');
 
       if (deleteTree.length) {
+        deleteTree.addClass('jstree-no-links');
         // Register data callback
         questionForm.data('job-answer-properties-extra', getAnswerProperties);
 

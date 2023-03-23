@@ -23,14 +23,12 @@ import java.util.Map;
 
 import javax.inject.Inject;
 import javax.inject.Named;
-import javax.inject.Provider;
 import javax.inject.Singleton;
 
 import org.xwiki.component.annotation.Component;
 import org.xwiki.script.service.ScriptService;
 import org.xwiki.stability.Unstable;
-
-import com.xpn.xwiki.XWikiContext;
+import org.xwiki.wiki.descriptor.WikiDescriptorManager;
 
 /**
  * Provides the operations to interact with the task consumer from the scripts.
@@ -48,13 +46,13 @@ public class TaskConsumerScriptService implements ScriptService
     private TaskManager taskManager;
 
     @Inject
-    private Provider<XWikiContext> xcontextProvider;
+    private WikiDescriptorManager wikiDescriptorManager;
 
     /**
      * @return the count of queued tasks, grouped by task type
      */
     public Map<String, Long> getQueueSizePerType()
     {
-        return this.taskManager.getQueueSizePerType(this.xcontextProvider.get().getWikiId());
+        return this.taskManager.getQueueSizePerType(this.wikiDescriptorManager.getCurrentWikiId());
     }
 }

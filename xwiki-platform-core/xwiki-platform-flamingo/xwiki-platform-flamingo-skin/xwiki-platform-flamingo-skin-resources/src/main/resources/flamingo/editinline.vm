@@ -49,6 +49,11 @@ $xwiki.ssfx.use('uicomponents/widgets/fullScreen.css', true)##
   </div>
 #end
 #template("hierarchy.vm")
+## Display a warning in case the document is restricted to explain explain the reason for potential errors.
+## Also, only display it to users with script right as it's very unlikely that others are impacted.
+#if ($doc.isRestricted() && $services.security.authorization.hasAccess('script'))
+  #warning($escapetool.xml($services.localization.render('core.document.restrictedEdit')))
+#end
 <div class="row">
   <div id="editMeta" class="col-xs-12 col-md-7">
     #template('editmeta.vm')
@@ -123,6 +128,11 @@ $renderedContent
     #set ($async = 'true')
   #end
   <input type="hidden" name="async" value="$escapetool.xml($async)" />
+#end
+## Pass the section number when the form is submitted in order to affect only the specified section.
+## We need to test if the section number is present to prevent a NumberFormatException for the empty string.
+#if("$!{request.section}" != '')
+  <input type="hidden" name="section" value="$!{escapetool.xml($request.section)}" />
 #end
 ## --------------
 ## Action buttons

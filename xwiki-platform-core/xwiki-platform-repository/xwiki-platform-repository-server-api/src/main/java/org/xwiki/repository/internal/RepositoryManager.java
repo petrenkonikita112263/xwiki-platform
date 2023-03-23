@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -56,6 +57,7 @@ import org.xwiki.component.phase.InitializationException;
 import org.xwiki.extension.DefaultExtensionDependency;
 import org.xwiki.extension.Extension;
 import org.xwiki.extension.ExtensionAuthor;
+import org.xwiki.extension.ExtensionComponent;
 import org.xwiki.extension.ExtensionDependency;
 import org.xwiki.extension.ExtensionId;
 import org.xwiki.extension.ExtensionIssueManagement;
@@ -63,6 +65,8 @@ import org.xwiki.extension.ExtensionNotFoundException;
 import org.xwiki.extension.ExtensionScm;
 import org.xwiki.extension.ResolveException;
 import org.xwiki.extension.internal.ExtensionFactory;
+import org.xwiki.extension.internal.ExtensionUtils;
+import org.xwiki.extension.internal.converter.ExtensionComponentConverter;
 import org.xwiki.extension.internal.converter.ExtensionIdConverter;
 import org.xwiki.extension.repository.ExtensionRepository;
 import org.xwiki.extension.repository.ExtensionRepositoryManager;
@@ -622,19 +626,6 @@ public class RepositoryManager implements Initializable, Disposable
 
         Extension extension = repository.resolve(new ExtensionId(extensionId, lastVersion));
 
-        // Get former ids versions
-        Collection<ExtensionId> features = extension.getExtensionFeatures();
-
-        TreeMap<Version, String> featureVersions = new TreeMap<>();
-
-        for (ExtensionId feature : features) {
-            try {
-                getVersions(feature.getId(), repository, type, featureVersions);
-            } catch (ResolveException e) {
-                // Ignore
-            }
-        }
-
         XWikiContext xcontext = this.xcontextProvider.get();
 
         boolean needSave = false;
@@ -675,6 +666,33 @@ public class RepositoryManager implements Initializable, Disposable
         // Update extension informations
 
         needSave |= updateExtension(extension, extensionObject, xcontext);
+
+        // Get former ids versions
+        TreeMap<Version, String> featureVersions = new TreeMap<>();
+        List<String> previousIds = extensionObject.getListValue(XWikiRepositoryModel.PROP_EXTENSION_PREVIOUSIDS);
+        if (previousIds.isEmpty()) {
+            // If it's empty but not explicitly empty it means it's unset so we use the old behavior of using features
+            // as previous ids
+            if (extensionObject.getIntValue(XWikiRepositoryModel.PROP_EXTENSION_PREVIOUSIDS_EMPTY, 0) == 0) {
+                Collection<ExtensionId> features = extension.getExtensionFeatures();
+                for (ExtensionId feature : features) {
+                    try {
+                        getVersions(feature.getId(), repository, type, featureVersions);
+                    } catch (ResolveException e) {
+                        // Ignore
+                    }
+                }
+            }
+        } else {
+            // Use the explicit previous ids
+            for (String previousId : previousIds) {
+                try {
+                    getVersions(previousId, repository, type, featureVersions);
+                } catch (ResolveException e) {
+                    // Ignore
+                }
+            }
+        }
 
         // Proxy marker
 
@@ -897,12 +915,21 @@ public class RepositoryManager implements Initializable, Disposable
         needSave |= updateFeatures(XWikiRepositoryModel.PROP_EXTENSION_FEATURES, extensionObject,
             extension.getExtensionFeatures());
 
+        // Previous ids
+        String previousIdsString =
+            extension.getProperty(Extension.IKEYPREFIX + XWikiRepositoryModel.PROP_EXTENSION_PREVIOUSIDS);
+        if (previousIdsString != null) {
+            List<String> previousIds = ExtensionUtils.importPropertyStringList(previousIdsString, true);
+            needSave |= updateCollection(extensionObject, XWikiRepositoryModel.PROP_EXTENSION_PREVIOUSIDS, previousIds,
+                xcontext);
+        }
+
         // Allowed namespaces
         needSave |= updateCollection(extensionObject, XWikiRepositoryModel.PROP_EXTENSION_ALLOWEDNAMESPACES,
             extension.getAllowedNamespaces(), xcontext);
 
         // Properties
-        needSave |= updateProperties(extensionObject, extension.getProperties());
+        needSave |= updateProperties(extensionObject, extension);
 
         return needSave;
     }
@@ -1260,8 +1287,19 @@ public class RepositoryManager implements Initializable, Disposable
         return this.resourceReferenceSerializer.serialize(resource);
     }
 
-    protected boolean updateProperties(BaseObject object, Map<String, ?> map)
+    protected boolean updateProperties(BaseObject object, Extension extension)
     {
+        Map<String, Object> map = extension.getProperties();
+
+        // [Retro compatibility] Reinject extension components as "unknow" properties since that's what XWiki version
+        // between 13.3 and 14.5 expect to find
+        Collection<ExtensionComponent> components = extension.getComponents();
+        if (!components.isEmpty()) {
+            map = new LinkedHashMap<>(map);
+            map.put(Extension.IKEYPREFIX + Extension.FIELD_COMPONENTS,
+                StringUtils.join(ExtensionComponentConverter.toStringList(components), '\n'));
+        }
+
         List<String> list = new ArrayList<>(map.size());
         for (Map.Entry<String, ?> entry : map.entrySet()) {
             String entryString = entry.getKey() + '=' + entry.getValue();
@@ -1318,15 +1356,14 @@ public class RepositoryManager implements Initializable, Disposable
         return false;
     }
 
-    private boolean updateCollection(BaseObject extensionObject, String fieldName, Collection<String> allowedNamespaces,
+    private boolean updateCollection(BaseObject extensionObject, String fieldName, Collection<String> values,
         XWikiContext xcontext)
     {
-        boolean needSave =
-            update(extensionObject, fieldName, allowedNamespaces != null ? allowedNamespaces : Collections.emptyList());
+        boolean needSave = update(extensionObject, fieldName, values != null ? values : Collections.emptyList());
 
         String fieldNameEmpty = fieldName + XWikiRepositoryModel.PROPSUFFIX_EMPTYCOLLECTION;
         if (extensionObject.getXClass(xcontext).get(fieldNameEmpty) != null) {
-            update(extensionObject, fieldNameEmpty, allowedNamespaces != null && allowedNamespaces.isEmpty() ? 1 : 0);
+            update(extensionObject, fieldNameEmpty, values != null && values.isEmpty() ? 1 : 0);
         }
 
         return needSave;

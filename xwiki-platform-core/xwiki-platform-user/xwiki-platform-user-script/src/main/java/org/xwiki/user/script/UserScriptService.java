@@ -26,10 +26,10 @@ import javax.inject.Singleton;
 import org.xwiki.component.annotation.Component;
 import org.xwiki.script.service.ScriptService;
 import org.xwiki.script.service.ScriptServiceManager;
-import org.xwiki.stability.Unstable;
 import org.xwiki.user.CurrentUserReference;
 import org.xwiki.user.GuestUserReference;
 import org.xwiki.user.SuperAdminUserReference;
+import org.xwiki.user.UserException;
 import org.xwiki.user.UserManager;
 import org.xwiki.user.UserProperties;
 import org.xwiki.user.UserPropertiesResolver;
@@ -85,6 +85,11 @@ public class UserScriptService implements ScriptService
     }
 
     /**
+     * Get the properties defined explicitly for a user (e.g. in the user profile wiki page), such as Editor to use,
+     * Advanced or Simple user, First name, etc), without fallbacks (i.e. without checking for properties defined in
+     * the current space - in {@code <space>.WebPreferences}, in the current wiki - in {@code XWiki.XWikiPreferences},
+     * and ultimately in the {@code xwiki.properties} configuration file).
+     *
      * @param userReference the reference to the user properties to resolve
      * @param parameters optional parameters that have a meaning only for the specific resolver implementation used
      * @return the User Properties object
@@ -96,6 +101,11 @@ public class UserScriptService implements ScriptService
     }
 
     /**
+     * Get the properties defined explicitly for a user (e.g. in the user profile wiki page), such as Editor to use,
+     * Advanced or Simple user, First name, etc), without fallbacks (i.e. without checking for properties defined in
+     * the current space - in {@code <space>.WebPreferences}, in the current wiki - in {@code XWiki.XWikiPreferences},
+     * and ultimately in the {@code xwiki.properties} configuration file).
+     * <p>
      * Note that we have a {@code UserReferenceConverter} component to automatically convert from
      * String to {@link UserReference} but since in the signature we accept a vararg of Object, the
      * {@link #getProperties(Object...)} is called instead when a single string is passed. This is the reason for this
@@ -112,6 +122,11 @@ public class UserScriptService implements ScriptService
     }
 
     /**
+     * Get the properties defined explicitly for the current user (e.g. in the user profile wiki page), such as Editor
+     * to use, Advanced or Simple user, First name, etc), without fallbacks (i.e. without checking for properties
+     * defined in the current space - in {@code <space>.WebPreferences}, in the current wiki - in
+     * {@code XWiki.XWikiPreferences}, and ultimately in the {@code xwiki.properties} configuration file).
+     *
      * @param parameters optional parameters that have a meaning only for the specific resolver implementation used
      * @return the User Properties object for the current user
      * @since 12.2
@@ -122,6 +137,11 @@ public class UserScriptService implements ScriptService
     }
 
     /**
+     * Get the properties defined explicitly for the current user (e.g. in the user profile wiki page), such as Editor
+     * to use, Advanced or Simple user, First name, etc), without fallbacks (i.e. without checking for properties
+     * defined in the current space - in {@code <space>.WebPreferences}, in the current wiki - in
+     * {@code XWiki.XWikiPreferences}, and ultimately in the {@code xwiki.properties} configuration file).
+     *
      * @return the User Properties object for the current user
      * @since 12.2
      */
@@ -131,6 +151,11 @@ public class UserScriptService implements ScriptService
     }
 
     /**
+     * Get the properties defined explicitly for the current user (e.g. in the user profile wiki page), such as Editor
+     * to use, Advanced or Simple user, First name, etc), with fallbacks (i.e. by also checking for properties
+     * defined in the current space - in {@code <space>.WebPreferences}, in the current wiki - in
+     * {@code XWiki.XWikiPreferences}, and ultimately in the {@code xwiki.properties} configuration file).
+     *
      * @param userReference the reference to the user properties to resolve
      * @param parameters optional parameters that have a meaning only for the specific resolver implementation used
      * @return the User Properties object
@@ -142,6 +167,11 @@ public class UserScriptService implements ScriptService
     }
 
     /**
+     * Get the properties defined explicitly for the current user (e.g. in the user profile wiki page), such as Editor
+     * to use, Advanced or Simple user, First name, etc), with fallbacks (i.e. by also checking for properties
+     * defined in the current space - in {@code <space>.WebPreferences}, in the current wiki - in
+     * {@code XWiki.XWikiPreferences}, and ultimately in the {@code xwiki.properties} configuration file).
+     *
      * @param parameters optional parameters that have a meaning only for the specific resolver implementation used
      * @return the User Properties object for the current user
      * @since 12.2
@@ -152,6 +182,11 @@ public class UserScriptService implements ScriptService
     }
 
     /**
+     * Get the properties defined explicitly for the current user (e.g. in the user profile wiki page), such as Editor
+     * to use, Advanced or Simple user, First name, etc), with fallbacks (i.e. by also checking for properties
+     * defined in the current space - in {@code <space>.WebPreferences}, in the current wiki - in
+     * {@code XWiki.XWikiPreferences}, and ultimately in the {@code xwiki.properties} configuration file).
+     *
      * @return the User Properties object for the current user
      * @since 12.2
      */
@@ -192,9 +227,10 @@ public class UserScriptService implements ScriptService
      *                      reference exists or not - for example the superadmin users or the guest users don't exist,
      *                      and a "document"-based User can be constructed and have no profile page and thus not exist)
      * @return true if the user exists in the store or false otherwise
+     * @throws UserException (since 14.6RC1, 14.4.3, 13.10.8) in case of error while checking if the user exists
      * @since 12.2
      */
-    public boolean exists(UserReference userReference)
+    public boolean exists(UserReference userReference) throws UserException
     {
         return this.userManager.exists(userReference);
     }
@@ -206,7 +242,6 @@ public class UserScriptService implements ScriptService
      * @return a serialization of the user reference.
      * @since 13.8RC1
      */
-    @Unstable
     public String serialize(UserReference userReference)
     {
         return this.userReferenceSerializer.serialize(userReference);

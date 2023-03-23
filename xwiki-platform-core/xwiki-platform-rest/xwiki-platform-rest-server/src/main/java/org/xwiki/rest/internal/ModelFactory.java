@@ -28,6 +28,7 @@ import java.util.Formatter;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.Vector;
 import java.util.stream.Collectors;
@@ -35,6 +36,8 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Provider;
 import javax.inject.Singleton;
+import javax.mail.internet.AddressException;
+import javax.mail.internet.InternetAddress;
 import javax.xml.parsers.ParserConfigurationException;
 
 import org.apache.commons.lang3.StringUtils;
@@ -46,6 +49,8 @@ import org.xwiki.job.Request;
 import org.xwiki.logging.LogLevel;
 import org.xwiki.logging.event.LogEvent;
 import org.xwiki.logging.tail.LogTail;
+import org.xwiki.mail.EmailAddressObfuscator;
+import org.xwiki.mail.GeneralMailConfiguration;
 import org.xwiki.model.EntityType;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.EntityReference;
@@ -129,9 +134,11 @@ import com.xpn.xwiki.objects.classes.BaseClass;
 import com.xpn.xwiki.objects.classes.ComputedFieldClass;
 import com.xpn.xwiki.objects.classes.ListClass;
 
+import static org.apache.commons.lang3.exception.ExceptionUtils.getRootCauseMessage;
+
 /**
  * Various common tools for resources.
- * 
+ *
  * @version $Id$
  * @since 7.3M1
  */
@@ -166,6 +173,14 @@ public class ModelFactory
 
     @Inject
     private UserReferenceSerializer<String> userReferenceSerializer;
+
+    // Needs to be a provider because some dependencies are lacking an implementation of this component at compile time.
+    @Inject
+    private Provider<GeneralMailConfiguration> generalMailConfiguration;
+
+    // Needs to be a provider because some dependencies are lacking an implementation of this component at compile time.
+    @Inject
+    private Provider<EmailAddressObfuscator> emailAddressObfuscator;
 
     public ModelFactory()
     {
@@ -262,7 +277,16 @@ public class ModelFactory
         String[] propertyNames = xwikiObject.getPropertyNames();
         if (propertyNames.length > 0) {
             try {
-                objectSummary.setHeadline(serializePropertyValue(xwikiObject.get(propertyNames[0])));
+                String firstPropertyName = propertyNames[0];
+                BaseClass baseClass = xwikiObject.getXClass(this.xcontextProvider.get());
+                PropertyInterface field = baseClass.getField(firstPropertyName);
+                // The property might not exist in the class. But if it does, it will be a PropertyClass. 
+                if (field != null) {
+                    String classType = ((com.xpn.xwiki.objects.classes.PropertyClass) field).getClassType();
+                    objectSummary.setHeadline(cleanupBeforeMakingPublic(classType, xwikiObject.get(firstPropertyName)));
+                } else {
+                    objectSummary.setHeadline(serializePropertyValue(xwikiObject.get(firstPropertyName)));
+                }
             } catch (XWikiException e) {
                 // Should never happen
             }
@@ -567,7 +591,7 @@ public class ModelFactory
                 return xcontext.getWiki().getDocument(document.getDocumentReference(), xcontext).getRealLocale();
             } catch (XWikiException e) {
                 this.logger.warn("Failed to get the default locale from [{}]. Root cause is [{}].",
-                    document.getDocumentReference(), ExceptionUtils.getRootCauseMessage(e));
+                    document.getDocumentReference(), getRootCauseMessage(e));
                 // Fall-back on the default locale specified on the translation page, which may not be accurate.
                 return document.getDefaultLocale();
             }
@@ -992,7 +1016,7 @@ public class ModelFactory
                 } catch (Exception e) {
                     this.logger.warn(
                         "Failed to get the pretty name of entity [{}]. Continue using the entity name. Root cause is [{}].",
-                        entityReference, ExceptionUtils.getRootCauseMessage(e));
+                        entityReference, getRootCauseMessage(e));
                 }
             }
             hierarchy.withItems(hierarchyItem);
@@ -1025,7 +1049,7 @@ public class ModelFactory
     /**
      * Serializes the value of the given XObject property. In case the property is an instance of
      * {@link ComputedFieldClass}, the serialized value is the computed property value.
-     * 
+     *
      * @param property an XObject property
      * @param propertyClass the PropertyClass of that XObject proprety
      * @param context the XWikiContext
@@ -1051,7 +1075,7 @@ public class ModelFactory
                 context.setDoc(document);
             }
         } else {
-            return serializePropertyValue(property);
+            return cleanupBeforeMakingPublic(propertyClass.getClassType(), property);
         }
     }
 
@@ -1234,7 +1258,7 @@ public class ModelFactory
 
     /**
      * Check if the given property should be exposed via REST.
-     * 
+     *
      * @param restProperty the property to be read/written
      * @return true if the property is considered accessible
      */
@@ -1245,5 +1269,31 @@ public class ModelFactory
         }
 
         return true;
+    }
+
+    private String cleanupBeforeMakingPublic(String type, PropertyInterface baseProperty)
+    {
+        String cleanedUpStringValue;
+        if (Objects.equals(type, PASSWORD_TYPE)) {
+            cleanedUpStringValue = null;
+        } else {
+            cleanedUpStringValue = serializePropertyValue(baseProperty);
+            // We obfuscate the email only if the obfuscation has been activated, and if the current user does not have 
+            // the right to edit the document containing the base property.
+            // A user allowed to edit a document has to view the unescaped email to be able to edit it correctly. 
+            if (Objects.equals(type, "Email") && this.generalMailConfiguration.get().shouldObfuscate()
+                && !this.authorizationManagerProvider.get().hasAccess(Right.EDIT, baseProperty.getReference()))
+            {
+                try {
+                    cleanedUpStringValue =
+                        this.emailAddressObfuscator.get().obfuscate(InternetAddress.parse(cleanedUpStringValue)[0]);
+                } catch (AddressException e) {
+                    this.logger.warn("Failed to parse [{}] to an email address. Cause: [{}]", cleanedUpStringValue,
+                        getRootCauseMessage(e));
+                    cleanedUpStringValue = "";
+                }
+            }
+        }
+        return cleanedUpStringValue;
     }
 }

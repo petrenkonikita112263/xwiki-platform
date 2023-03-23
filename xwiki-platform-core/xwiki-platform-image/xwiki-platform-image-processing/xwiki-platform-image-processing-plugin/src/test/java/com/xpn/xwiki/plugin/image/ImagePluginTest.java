@@ -29,6 +29,8 @@ import java.util.Date;
 import org.apache.commons.codec.binary.Base64;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentMatchers;
 import org.xwiki.cache.Cache;
 import org.xwiki.cache.CacheManager;
@@ -43,19 +45,23 @@ import com.xpn.xwiki.test.junit5.mockito.OldcoreTest;
 import com.xpn.xwiki.web.XWikiServletRequest;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
  * Unit tests for the {@link ImagePlugin} class.
- * 
+ *
  * @version $Id$
  */
 @OldcoreTest
-public class ImagePluginTest
+class ImagePluginTest
 {
     private static final byte[] IMAGE_CONTENT =
         Base64.decodeBase64("iVBORw0KGgoAAAANSUhEUgAAAJYAAAA8CAMAAACzWLNYAAACZFBMVEXUVQD////+"
@@ -92,7 +98,8 @@ public class ImagePluginTest
             + "Q7NYJ8BSX8UPAG2iDA7NRlcMsR+BEv/dtFryk0SdvytG/RgXMu+OMwX4KVDzM7DJ"
             + "lmNfyPKNsFaOdX1t7fD6ll8CNTuhxZFjX1/HGV1f52zl15GX/d/i/J4tmMYfqUBN"
             + "eyl/ej2wRnfoItr8l/3WeLn4PXSq3EbDXz2j/DTy9z++V3ViJlSzrGa9K5M1tdpX"
-            + "bwl+otAu7U4p4/Hv5kPqQhwJx0cWWWSRRRZZZNH4DzmZwO7NW2cKAAAAAElFTkSu" + "QmCC");
+            + "bwl+otAu7U4p4/Hv5kPqQhwJx0cWWWSRRRZZZNH4DzmZwO7NW2cKAAAAAElFTkSu"
+            + "QmCC");
 
     @InjectMockitoOldcore
     private MockitoOldcore oldCore;
@@ -102,11 +109,11 @@ public class ImagePluginTest
     private ImageProcessor imageProcessor;
 
     @BeforeEach
-    public void configure() throws Exception
+    void configure() throws Exception
     {
         XWiki xwiki = this.oldCore.getSpyXWiki();
         doReturn("10").when(xwiki).Param("xwiki.plugin.image.cache.capacity");
-        doReturn("test").when(xwiki).Param(ArgumentMatchers.eq("xwiki.plugin.image.processorHint"),
+        doReturn("test").when(xwiki).Param(eq("xwiki.plugin.image.processorHint"),
             ArgumentMatchers.anyString());
 
         this.oldCore.getMocker().registerMockComponent(CacheManager.class);
@@ -118,16 +125,16 @@ public class ImagePluginTest
     }
 
     @Test
-    public void testDownloadAttachmentWithUnsupportedFileType()
+    void downloadAttachmentWithUnsupportedFileType()
     {
         XWikiAttachment attachment = mock(XWikiAttachment.class);
         when(attachment.getMimeType()).thenReturn("image/notsupported");
         when(attachment.getDate()).thenReturn(new Date(0));
-        assertSame(attachment, plugin.downloadAttachment(attachment, new XWikiContext()));
+        assertSame(attachment, this.plugin.downloadAttachment(attachment, new XWikiContext()));
     }
 
     @Test
-    public void testCacheOfScaledAttachment() throws Exception
+    void cacheOfScaledAttachment() throws Exception
     {
         Date date = new Date(0);
 
@@ -158,19 +165,88 @@ public class ImagePluginTest
         Image image = mock(Image.class);
         when(image.getWidth(null)).thenReturn(400);
         when(image.getHeight(null)).thenReturn(300);
-        when(imageProcessor.readImage(attachmentInputStream)).thenReturn(image);
+        when(this.imageProcessor.readImage(attachmentInputStream)).thenReturn(image);
         RenderedImage renderedImage = mock(RenderedImage.class);
-        when(imageProcessor.scaleImage(image, 30, 30)).thenReturn(renderedImage);
+        when(this.imageProcessor.scaleImage(image, 30, 30)).thenReturn(renderedImage);
 
-        XWikiAttachment scaled = plugin.downloadAttachment(attachment, xcontext);
+        XWikiAttachment scaled = this.plugin.downloadAttachment(attachment, xcontext);
 
         String cacheKey = "0;null;0;30;30;false;-1.0";
         when(imageCache.get(cacheKey)).thenReturn(scaled);
 
         // Load again, this time from cache.
-        assertSame(scaled, plugin.downloadAttachment(attachment, xcontext));
+        assertSame(scaled, this.plugin.downloadAttachment(attachment, xcontext));
 
-        verify(imageProcessor, times(1)).writeImage(renderedImage, "image/png", .5F, attachmentOutputStream);
+        verify(this.imageProcessor, times(1)).writeImage(renderedImage, "image/png", .5F, attachmentOutputStream);
         verify(imageCache, times(1)).set(cacheKey, attachment);
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "100, 500, false, 60, 300",
+        "1000, 5000, false, 60, 300",
+        "500, 100, false, 400, 80",
+        "5000, 1000, false, 400, 80",
+        "800, 600, false, 400, 300",
+        "100, 100, false, 100, 100",
+        "100, 75, true, 100, 75",
+        "100, 100, true, 100, 75",
+        "120, 75, true, 100, 75",
+        "0, 75, true, 100, 75",
+        "100, 0, true, 100, 75",
+        "0, 75, false, 100, 75",
+        "100, 0, false, 100, 75",
+        "0, 0, false, 400, 300",
+        "0, 0, true, 400, 300",
+        "400, 75, true, 100, 75",
+        "500, 75, true, 100, 75",
+        "100, 300, true, 100, 75",
+        "100, 400, true, 100, 75",
+        "400, 300, true, 400, 300",
+        "500, 400, true, 400, 300"
+    })
+    void scaling(int width, int height, boolean keepAspectRatio, int expectedWidth, int expectedHeight)
+        throws Exception
+    {
+        Date date = new Date(0);
+
+        XWikiContext xcontext = this.oldCore.getXWikiContext();
+
+        XWikiAttachment attachment = mock(XWikiAttachment.class);
+        when(attachment.getMimeType(xcontext)).thenReturn("image/png");
+        InputStream attachmentInputStream = new ByteArrayInputStream(IMAGE_CONTENT);
+        when(attachment.getContentInputStream(xcontext)).thenReturn(attachmentInputStream);
+        when(attachment.clone()).thenReturn(attachment);
+        when(attachment.getDate()).thenReturn(date);
+
+        XWikiAttachmentContent attachmentContent = mock(XWikiAttachmentContent.class);
+        when(attachment.getAttachment_content()).thenReturn(attachmentContent);
+        when(attachmentContent.getContentInputStream()).thenReturn(attachmentInputStream);
+        OutputStream attachmentOutputStream = mock(OutputStream.class);
+        when(attachmentContent.getContentOutputStream()).thenReturn(attachmentOutputStream);
+
+        CacheManager cacheManager = this.oldCore.getMocker().getInstance(CacheManager.class);
+        Cache<Object> imageCache = mock(Cache.class);
+        when(cacheManager.createNewLocalCache(ArgumentMatchers.any())).thenReturn(imageCache);
+
+        XWikiServletRequest request = mock(XWikiServletRequest.class);
+        when(request.getParameter("width")).thenReturn(Integer.toString(width));
+        when(request.getParameter("height")).thenReturn(Integer.toString(height));
+        when(request.getParameter("keepAspectRatio")).thenReturn(Boolean.toString(keepAspectRatio));
+        xcontext.setRequest(request);
+
+        Image image = mock(Image.class);
+        when(image.getWidth(null)).thenReturn(400);
+        when(image.getHeight(null)).thenReturn(300);
+        when(this.imageProcessor.readImage(attachmentInputStream)).thenReturn(image);
+        RenderedImage renderedImage = mock(RenderedImage.class);
+        when(this.imageProcessor.scaleImage(eq(image), anyInt(), anyInt())).thenReturn(renderedImage);
+
+        this.plugin.downloadAttachment(attachment, xcontext);
+        if (expectedWidth == image.getWidth(null) && expectedHeight == image.getHeight(null)) {
+            verify(this.imageProcessor, never()).scaleImage(any(), anyInt(), anyInt());
+        } else {
+            verify(this.imageProcessor).scaleImage(image, expectedWidth, expectedHeight);
+        }
     }
 }

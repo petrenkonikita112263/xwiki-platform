@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.xwiki.platform</groupId>
     <artifactId>xwiki-platform-dashboard</artifactId>
-    <version>14.4-SNAPSHOT</version>
+    <version>15.3-SNAPSHOT</version>
   </parent>
   <artifactId>xwiki-platform-dashboard-macro</artifactId>
   <name>XWiki Platform - Dashboard - Macro</name>
@@ -79,6 +79,11 @@
     <dependency>
       <groupId>javax.servlet</groupId>
       <artifactId>javax.servlet-api</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mortbay.jasper</groupId>
+      <artifactId>apache-el</artifactId>
       <scope>test</scope>
     </dependency>
     <dependency>

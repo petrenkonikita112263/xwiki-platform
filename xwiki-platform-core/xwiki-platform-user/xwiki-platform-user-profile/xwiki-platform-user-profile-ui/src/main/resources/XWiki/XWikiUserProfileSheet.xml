@@ -37,9 +37,10 @@
   <syntaxId>xwiki/2.0</syntaxId>
   <hidden>true</hidden>
   <content>{{velocity}}
-#if ("$!request.userId" != "" &amp;&amp; ($request.action == "disable" || $request.action == "enable") &amp;&amp; $services.csrf.isTokenValid($request.csrf))
+#if ($hasAdmin &amp;&amp; "$!request.userId" != "" &amp;&amp; ($request.action == "disable" || $request.action == "enable") &amp;&amp; $services.csrf.isTokenValid($request.csrf))
 #set ($user = $xwiki.getUser($request.userId))
-#if ($user.getUser().exists($xcontext.context))
+#set ($isCurrentUser = $user.getUser().userReference.equals($xcontext.userReference))
+#if (!$isCurrentUser &amp;&amp; $user.getUser().exists($xcontext.context))
   #set ($disabled = ($request.action == "disable"))
   #set ($discard = $user.setDisabledStatus($disabled))
   #set ($success = ($disabled &amp;&amp; $user.isDisabled()) || (!$disabled &amp;&amp; !$user.isDisabled()))
@@ -140,7 +141,46 @@
     <property>
       <code>require(['jquery', 'xwiki-meta'], function ($, xm) {
   'use strict';
-  $(function() {
+  
+   $(function() {
+    /** Add autocomplete attributes to ease form filling. */
+    var fieldsPurposes = [
+        {
+          'name': 'first_name',
+          'purpose': 'given-name'
+        },
+        {
+          'name': 'last_name',
+          'purpose': 'family-name'
+        },
+        {
+          'name': 'company',
+          'purpose': 'organization'
+        },
+        {
+          'name': 'email',
+          'purpose': 'email'
+        },
+        {
+          'name': 'phone',
+          'purpose': 'tel'
+        },
+        {
+          'name': 'address',
+          'purpose': 'street-address'
+        },
+        {
+          'name': 'blog',
+          'purpose': 'url'
+        }
+      ];
+    fieldsPurposes.forEach(function (entry) {
+      var inputField = $('[name$="' + entry.name + '"]');
+      if (inputField.length === 1) {
+        inputField.attr('autocomplete', entry.purpose);
+      }
+    });
+
     /**
      * Save the new user status.
      */
@@ -567,8 +607,9 @@ $services.localization.render('platform.core.profile.category.profile.disabled')
     &lt;div class='userInfo'&gt;
     #if($xcontext.action == 'view' &amp;&amp; $hasEdit)
       &lt;div class='editProfileCategory'&gt;
-        &lt;a title="$escapetool.xml($services.localization.render('platform.core.profile.category.profile.edit'))" 
-              href="$doc.getURL('edit', 'editor=inline&amp;amp;category=profile')"&gt;
+        &lt;a title="$escapetool.xml($services.localization.render('platform.core.profile.category.profile.edit'))"
+           href="$doc.getURL('edit', 'editor=inline&amp;amp;category=profile')" class="btn btn-xs"&gt;
+          &lt;span class="action-icon"&gt;$services.icon.renderHTML('pencil')&lt;/span&gt;
           &lt;span class='sr-only'&gt;$escapetool.xml($services.localization.render('platform.core.profile.category.profile.edit'))&lt;/span&gt;
         &lt;/a&gt;
       &lt;/div&gt;

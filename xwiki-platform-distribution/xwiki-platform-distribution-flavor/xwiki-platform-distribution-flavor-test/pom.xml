@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.xwiki.platform</groupId>
     <artifactId>xwiki-platform-distribution-flavor</artifactId>
-    <version>14.4-SNAPSHOT</version>
+    <version>15.3-SNAPSHOT</version>
   </parent>
   <artifactId>xwiki-platform-distribution-flavor-test</artifactId>
   <name>XWiki Platform - Distribution - Flavor - Functional Tests - Parent POM</name>
@@ -101,6 +101,8 @@
                     <type>zip</type>
                   </artifactItem>
                 </artifactItems>
+                <!-- Exclude the Active Installs 2 API to disable the feature for the tests -->
+                <excludes>**/xwiki-platform-activeinstalls2-*.*</excludes>
                 <outputDirectory>${project.build.directory}</outputDirectory>
                 <!-- Allow skipping the unpack -->
                 <skip>${xwiki.test.skipUnpack}</skip>
@@ -131,12 +133,6 @@
             </execution>
           </executions>
           <dependencies>
-            <dependency>
-              <groupId>org.xwiki.platform</groupId>
-              <artifactId>xwiki-platform-eventstream-store-hibernate</artifactId>
-              <version>${project.version}</version>
-              <scope>runtime</scope>
-            </dependency>
             <dependency>
               <groupId>org.xwiki.platform</groupId>
               <artifactId>xwiki-platform-instance</artifactId>
@@ -263,7 +259,6 @@
                     -->
                     templates/accessdenied\.vm <!-- simply returns 403 -->
                     templates/ad\.vm <!-- not used, needs special configuration -->
-                    templates/analytics\.vm <!-- commented out -->
                     templates/attach\.vm <!-- only redirects to attachments.vm -->
                     templates/changeavatar\.vm <!-- does not produce any output, just redirects -->
                     templates/deletegroupmember\.vm <!-- does not produce any output, expects "fullname" to be a valid user name -->
@@ -528,6 +523,5 @@
     <module>xwiki-platform-distribution-flavor-test-escaping</module>
     <module>xwiki-platform-distribution-flavor-test-storage</module>
     <module>xwiki-platform-distribution-flavor-test-upgrade</module>
-    <module>xwiki-platform-distribution-flavor-test-jmeter</module>
   </modules>
 </project>

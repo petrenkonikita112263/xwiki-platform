@@ -45,7 +45,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
@@ -97,6 +96,8 @@ import org.xwiki.filter.xar.input.XARInputProperties;
 import org.xwiki.filter.xar.output.XAROutputProperties;
 import org.xwiki.filter.xml.output.DefaultResultOutputTarget;
 import org.xwiki.job.event.status.JobProgressManager;
+import org.xwiki.link.LinkException;
+import org.xwiki.link.LinkStore;
 import org.xwiki.localization.ContextualLocalizationManager;
 import org.xwiki.localization.LocaleUtils;
 import org.xwiki.model.EntityType;
@@ -145,9 +146,6 @@ import org.xwiki.rendering.renderer.printer.WikiPrinter;
 import org.xwiki.rendering.syntax.Syntax;
 import org.xwiki.rendering.syntax.SyntaxRegistry;
 import org.xwiki.rendering.transformation.RenderingContext;
-import org.xwiki.rendering.transformation.TransformationContext;
-import org.xwiki.rendering.transformation.TransformationException;
-import org.xwiki.rendering.transformation.TransformationManager;
 import org.xwiki.rendering.util.ErrorBlockGenerator;
 import org.xwiki.security.authorization.ContextualAuthorizationManager;
 import org.xwiki.security.authorization.Right;
@@ -218,6 +216,8 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
     private static final Logger LOGGER = LoggerFactory.getLogger(XWikiDocument.class);
 
     private static final String TM_FAILEDDOCUMENTPARSE = "core.document.error.failedParse";
+
+    private static final String CLOSE_HTML_MACRO = "{{/html}}";
 
     /**
      * An attachment waiting to be deleted at next document save.
@@ -416,15 +416,6 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
     private static UserConfiguration getUserConfiguration()
     {
         return Utils.getComponent(UserConfiguration.class);
-    }
-
-    /**
-     * Used to convert {@link PageReference} into {@link DocumentReference}.
-     */
-    private static DocumentReferenceResolver<PageReference> getCurrentPageReferenceDocumentReferenceResolver()
-    {
-        return Utils.getComponent(new DefaultParameterizedType(null, DocumentReferenceResolver.class,
-            PageReference.class), "current");
     }
 
     private String title;
@@ -632,6 +623,11 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
      * @see #getOriginalDocument()
      */
     private XWikiDocument originalDocument;
+
+    /**
+     * If the document should always be rendered in restricted mode.
+     */
+    private boolean restricted;
 
     /**
      * Used to display the title and the content of this document. Do not inject the component here to avoid any simple
@@ -947,6 +943,11 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
         return Utils.getComponent(UserReferenceSerializer.TYPE_STRING, "compactwiki/document");
     }
 
+    private LinkStore getLinkStore()
+    {
+        return Utils.getComponent(LinkStore.class);        
+    }
+
     public XWikiStoreInterface getStore(XWikiContext context)
     {
         return context.getWiki().getStore();
@@ -1139,9 +1140,9 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
     }
 
     /**
-     * @return the copy of this XWikiDocument instance before any modification was made to it. It is reset to the actual
-     *         values when the document is saved in the database. This copy is used for finding out differences made to
-     *         this document (useful for example to send the correct notifications to document change listeners).
+     * @return the copy of this XWikiDocument instance before any modification was made to it. This copy is used for
+     *         finding out differences made to this document (useful for example to send the correct notifications to
+     *         document change listeners).
      */
     @Override
     public XWikiDocument getOriginalDocument()
@@ -1341,6 +1342,7 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
                 DocumentDisplayerParameters parameters = new DocumentDisplayerParameters();
                 parameters.setExecutionContextIsolated(executionContextIsolated);
                 parameters.setTransformationContextIsolated(transformationContextIsolated);
+                // Don't consider isRestricted() here as this could invoke a sheet.
                 parameters.setTransformationContextRestricted(transformationContextRestricted);
                 // Render the translated content (matching the current language) using this document's syntax.
                 parameters.setContentTranslated(tdoc != this);
@@ -1610,6 +1612,26 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
     /**
      * @param text the text to render
      * @param sourceSyntaxId the id of the Syntax used by the passed text (e.g. {@code xwiki/2.1})
+     * @param restrictedTransformationContext see {@link DocumentDisplayerParameters#isTransformationContextRestricted}.
+     * @param sDocument the {@link XWikiDocument} to use as secure document, if null keep the current one
+     * @param isolated true of the content should be executed in this document's context
+     * @param context the XWiki context
+     * @return the given text rendered in the context of this document using the passed Syntax
+     * @since 14.10
+     * @since 14.4.7
+     * @since 13.10.11
+     */
+    @Unstable
+    public String getRenderedContent(String text, Syntax sourceSyntaxId, boolean restrictedTransformationContext,
+        XWikiDocument sDocument, boolean isolated, XWikiContext context)
+    {
+        return getRenderedContent(text, sourceSyntaxId, getOutputSyntax(), restrictedTransformationContext, sDocument,
+            isolated, context);
+    }
+
+    /**
+     * @param text the text to render
+     * @param sourceSyntaxId the id of the Syntax used by the passed text (e.g. {@code xwiki/2.1})
      * @param targetSyntaxId the id of the syntax in which to render the document content
      * @param restrictedTransformationContext see {@link DocumentDisplayerParameters#isTransformationContextRestricted}.
      * @param sDocument the {@link XWikiDocument} to use as secure document, if null keep the current one
@@ -1648,6 +1670,7 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
             XWikiDocument fakeDocument = new XWikiDocument(getDocumentReference());
             fakeDocument.setSyntax(sourceSyntaxId);
             fakeDocument.setContent(text);
+            fakeDocument.setRestricted(sDocument != null && sDocument.isRestricted());
 
             // We don't let displayer take care of the context isolation because we don't want the fake document to be
             // context document
@@ -2517,7 +2540,7 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
             XWikiDocumentArchive arch;
             // A document not comming from the database cannot have an archive stored in the database
             if (this.isNew()) {
-                arch = new XWikiDocumentArchive(getId());
+                arch = new XWikiDocumentArchive(getDocumentReference().getWikiReference(), getId());
             } else {
                 arch = getVersioningStore(context).getXWikiDocumentArchive(this, context);
             }
@@ -2538,6 +2561,9 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
         if (this.archive != null) {
             return this.archive.get();
         }
+        // Some APIs are expecting the archive to be null for loading it
+        // (e.g. VersioningStore#loadXWikiDocumentArchive), so it's better to keep it null than to return an
+        // empty archive which would never be populated.
         return null;
     }
 
@@ -2554,7 +2580,7 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
 
         // A document not comming from the database cannot have an archive stored in the database
         if (this.isNew()) {
-            arch = new XWikiDocumentArchive(getId());
+            arch = new XWikiDocumentArchive(getDocumentReference().getWikiReference(), getId());
             setDocumentArchive(arch);
             return arch;
         }
@@ -2585,12 +2611,16 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
         // request)
         if (arch != null) {
             this.archive = new SoftReference<XWikiDocumentArchive>(arch);
+        } else {
+            // Some APIs are expecting the archive to be null for loading it
+            // (e.g. VersioningStore#loadXWikiDocumentArchive), so we allow setting it back to null.
+            this.archive = null;
         }
     }
 
     public void setDocumentArchive(String sarch) throws XWikiException
     {
-        XWikiDocumentArchive xda = new XWikiDocumentArchive(getId());
+        XWikiDocumentArchive xda = new XWikiDocumentArchive(getDocumentReference().getWikiReference(), getId());
         xda.setArchive(sarch);
         setDocumentArchive(xda);
     }
@@ -3861,10 +3891,19 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
             // We test if we're inside the rendering engine since it's also possible that this display() method is
             // called directly from a template and in this case we only want HTML as a result and not wiki syntax.
             // TODO: find a more generic way to handle html macro because this works only for XWiki 1.0 and XWiki 2.0
-            // Add the {{html}}{{/html}} only when result really contains html since it's not needed for pure text
-            if (isInRenderingEngine && !is10Syntax(wrappingSyntaxId) && HTMLUtils.containsElementText(result)) {
+            // Add the {{html}}{{/html}} only when result really contains html or { which could be part of an XWiki
+            // macro syntax since it's not needed for pure text
+            if (isInRenderingEngine && !is10Syntax(wrappingSyntaxId)
+                && (HTMLUtils.containsElementText(result) || result.indexOf("{") != -1))
+            {
                 result.insert(0, "{{html clean=\"false\" wiki=\"false\"}}");
-                result.append("{{/html}}");
+                // Escape closing HTML macro syntax.
+                int startIndex = 0;
+                // Start searching at the last match to avoid scanning the whole string again.
+                while ((startIndex = result.indexOf(CLOSE_HTML_MACRO, startIndex)) != -1) {
+                    result.replace(startIndex, startIndex + 2, "&#123;&#123;");
+                }
+                result.append(CLOSE_HTML_MACRO);
             }
 
             return result.toString();
@@ -4327,20 +4366,7 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
     @Unstable
     public void readTemporaryUploadedFiles(EditForm editForm)
     {
-        List<String> temporaryUploadedFiles = editForm.getTemporaryUploadedFiles();
-        if (!temporaryUploadedFiles.isEmpty()) {
-            TemporaryAttachmentSessionsManager attachmentManager = getTemporaryAttachmentManager();
-            for (String temporaryUploadedFile : temporaryUploadedFiles) {
-                Optional<XWikiAttachment> uploadedAttachmentOpt =
-                    attachmentManager.getUploadedAttachment(getDocumentReference(), temporaryUploadedFile);
-                uploadedAttachmentOpt.ifPresent(uploadedAttachment -> {
-                    XWikiAttachment previousAttachment = this.setAttachment(uploadedAttachment);
-                    if (previousAttachment != null) {
-                        uploadedAttachment.setVersion(previousAttachment.getNextVersion());
-                    }
-                });
-            }
-        }
+        getTemporaryAttachmentManager().attachTemporaryAttachmentsInDocument(this, editForm.getTemporaryUploadedFiles());
     }
 
     /**
@@ -4536,7 +4562,10 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
             if (cloneArchive) {
                 doc.cloneDocumentArchive(this);
             } else {
-                doc.setDocumentArchive(getDocumentArchive());
+                // Without this explicit initialization, it is possible for the archive to be incorrectly initialized.
+                // For instance, with the archive of the cloned document.
+                // Here we guarantee that further calls of APIs to get the archive will properly populate the data.
+                doc.setDocumentArchive((XWikiDocumentArchive) null);
             }
             doc.getAuthors().copyAuthors(getAuthors());
             doc.setContent(getContent());
@@ -4561,6 +4590,7 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
             doc.setMinorEdit(isMinorEdit());
             doc.setSyntax(getSyntax());
             doc.setHidden(isHidden());
+            doc.setRestricted(isRestricted());
 
             if (this.xClass != null) {
                 doc.setXClass(this.xClass.clone());
@@ -4722,6 +4752,14 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
         }
     }
 
+    /**
+     * Indicates whether some other document is "equal to" this one.
+     * <p>
+     * This ignores the {@link #isRestricted()} property as it is not considered to be part of the data.
+     *
+     * @param object the document to compare to
+     * @return {@code true} if this document is the same as the object argument; {@code false} otherwise
+     */
     @Override
     public boolean equals(Object object)
     {
@@ -5498,8 +5536,10 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
     /**
      * Get the wiki document references pointing to this document.
      * <p>
-     * Theses links are stored to the database when documents are saved. You can use "backlinks" in XWikiPreferences or
-     * "xwiki.backlinks" in xwiki.cfg file to enable links storage in the database.
+     * Theses links are stored in the Solr search core when the document is indexed. You can use "backlinks" in
+     * XWikiPreferences or "xwiki.backlinks" in xwiki.cfg file to enable links storage in the database.
+     * <p>
+     * Since 14.8RC1, this method return all backlinked documents and not just those located in the context wiki.
      *
      * @param context the XWiki context.
      * @return the found wiki document references
@@ -5508,7 +5548,28 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
      */
     public List<DocumentReference> getBackLinkedReferences(XWikiContext context) throws XWikiException
     {
-        return getStore(context).loadBacklinks(getDocumentReference(), true, context);
+        Set<EntityReference> references;
+        try {
+            references = getLinkStore().resolveBackLinkedEntities(getDocumentReference());
+        } catch (LinkException e) {
+            throw new XWikiException("Failed to load backlinks for reference [" + getDocumentReference() + "]", e);
+        }
+
+        Set<DocumentReference> documentReferences = new HashSet<>(references.size());
+        for (EntityReference entityReference : references) {
+            // Resolve the DOCUMENT reference
+            DocumentReference linkReference = context.getWiki().getDocumentReference(entityReference, context);
+
+            // Retro compatibility: remove the locale as it's what is expected of #getBackLinkedReferences(XWikicontext)
+            if (linkReference.getLocale() != null) {
+                linkReference = new DocumentReference(linkReference, (Locale) null);
+            }
+
+            // Add the reference
+            documentReferences.add(linkReference);
+        }
+
+        return new ArrayList<>(documentReferences);
     }
 
     /**
@@ -5517,7 +5578,17 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
     @Deprecated(since = "2.2M2")
     public List<String> getBackLinkedPages(XWikiContext context) throws XWikiException
     {
-        return getStore(context).loadBacklinks(getFullName(), context, true);
+        List<DocumentReference> references = getBackLinkedReferences(context);
+
+        EntityReferenceSerializer<String> serializer = getCompactWikiEntityReferenceSerializer();
+
+        List<String> documentNames = new ArrayList<>(references.size());
+        for (DocumentReference reference : references) {
+            // Serialize the reference
+            documentNames.add(serializer.serialize(reference));
+        }
+
+        return documentNames;
     }
 
     /**
@@ -5539,7 +5610,7 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
         Set<XWikiLink> links;
 
         // We don't handle the links the same way in 1.0 syntax for retro-compatibility reason
-        // So here we explicitely get the link from the DB instead of looking inside the document.
+        // So here we explicitly get the link from the DB instead of looking inside the document.
         if (is10Syntax()) {
             links = new LinkedHashSet<>(getStore(context).loadLinks(getId(), context, true));
         } else {
@@ -5780,12 +5851,11 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
             }
 
             for (EntityReference reference : references) {
-                // If the reference is a PageReference then we can't know if it points to a terminal page or a
-                // non-terminal one, and thus we need to resolve it.
-                if (reference instanceof PageReference) {
-                    reference = getCurrentPageReferenceDocumentReferenceResolver().resolve((PageReference) reference);
-                }
-                documentNames.add(serializer.serialize(reference));
+                // Get the reference of the document
+                DocumentReference linkDocumentReference = context.getWiki().getDocumentReference(reference, context);
+
+                // Serialize the reference
+                documentNames.add(serializer.serialize(linkDocumentReference));
             }
         } finally {
             context.setDoc(contextDoc);
@@ -6725,7 +6795,7 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
      * @param context the XWiki Context
      * @return the document in the provided language or this if the provided language does not exists
      * @throws XWikiException error when loading the document
-     * @deprecated use {@link #getTranslatedDocument(Locale, XWikiContext)} insead
+     * @deprecated use {@link #getTranslatedDocument(Locale, XWikiContext)} instead
      */
     @Deprecated(since = "4.3M2")
     public XWikiDocument getTranslatedDocument(String language, XWikiContext context) throws XWikiException
@@ -9063,45 +9133,7 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
     {
         try {
             XDOM dom = parseContent(currentSyntaxId, content, source);
-            return performSyntaxConversion(dom, targetSyntax, null);
-        } catch (Exception e) {
-            throw new XWikiException(XWikiException.MODULE_XWIKI_RENDERING, XWikiException.ERROR_XWIKI_UNKNOWN,
-                "Failed to convert document to syntax [" + targetSyntax + "]", e);
-        }
-    }
-
-    /**
-     * Convert the passed content from the passed syntax to the passed new syntax.
-     *
-     * @param content the XDOM content to convert, the XDOM can be modified during the transformation
-     * @param targetSyntax the new syntax after the conversion
-     * @param txContext the context when Transformation are executed or null if transformation shouldn't be executed
-     * @return the converted content in the new syntax
-     * @throws XWikiException if an exception occurred during the conversion process
-     * @since 2.4M2
-     */
-    private static String performSyntaxConversion(XDOM content, Syntax targetSyntax, TransformationContext txContext)
-        throws XWikiException
-    {
-        try {
-            if (txContext != null) {
-                // Transform XDOM
-                TransformationManager transformations = Utils.getComponent(TransformationManager.class);
-                if (txContext.getXDOM() == null) {
-                    txContext.setXDOM(content);
-                }
-                try {
-                    transformations.performTransformations(content, txContext);
-                } catch (TransformationException te) {
-                    // An error happened during one of the transformations. Since the error has been logged
-                    // continue
-                    // TODO: We should have a visual clue for the user in the future to let him know something
-                    // didn't work as expected.
-                }
-            }
-
-            // Render XDOM
-            return renderXDOM(content, targetSyntax);
+            return renderXDOM(dom, targetSyntax);
         } catch (Exception e) {
             throw new XWikiException(XWikiException.MODULE_XWIKI_RENDERING, XWikiException.ERROR_XWIKI_UNKNOWN,
                 "Failed to convert document to syntax [" + targetSyntax + "]", e);
@@ -9485,5 +9517,47 @@ public class XWikiDocument implements DocumentModelBridge, Cloneable
             UserReference userReference = userStringToUserReference(serializedUserReference);
             this.authors.setOriginalMetadataAuthor(userReference);
         }
+    }
+
+    /**
+     * Make sure any document metadata which may depend on configuration is initialized to its default value.
+     * 
+     * @since 14.8RC1
+     * @since 14.4.4
+     * @since 13.10.10
+     */
+    @Unstable
+    public void initialize()
+    {
+        // There is no syntax by default in a new document and the default one is retrieved from the configuration
+        setSyntax(getSyntax());
+    }
+
+    /**
+     * @return if rendering transformations shall be executed in restricted mode and the title not be executed
+     * @since 14.10.7
+     * @since 15.2RC1
+     */
+    @Override
+    @Unstable
+    public boolean isRestricted()
+    {
+        return this.restricted;
+    }
+
+    /**
+     * Set the restricted property that disables scripts and other dangerous content.
+     * <p>
+     * This property is not stored in the database as it is only supposed to be {@code true} on documents that do not
+     * correspond to the current version of the document.
+     *
+     * @param restricted if rendering transformations shall be executed in restricted mode and the title not be executed
+     * @since 14.10.7
+     * @since 15.2RC1
+     */
+    @Unstable
+    public void setRestricted(boolean restricted)
+    {
+        this.restricted = restricted;
     }
 }

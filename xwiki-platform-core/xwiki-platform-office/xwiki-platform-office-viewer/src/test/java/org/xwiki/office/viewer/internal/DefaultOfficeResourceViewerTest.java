@@ -23,6 +23,7 @@ import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -66,6 +67,7 @@ import org.xwiki.rendering.syntax.Syntax;
 import org.xwiki.resource.ResourceReferenceSerializer;
 import org.xwiki.resource.temporary.TemporaryResourceReference;
 import org.xwiki.resource.temporary.TemporaryResourceStore;
+import org.xwiki.security.authorization.AccessDeniedException;
 import org.xwiki.store.TemporaryAttachmentSessionsManager;
 import org.xwiki.test.annotation.BeforeComponent;
 import org.xwiki.test.junit5.XWikiTempDir;
@@ -74,6 +76,7 @@ import org.xwiki.test.junit5.mockito.InjectMockComponents;
 import org.xwiki.test.junit5.mockito.MockComponent;
 import org.xwiki.test.mockito.MockitoComponentManager;
 import org.xwiki.url.ExtendedURL;
+import org.xwiki.url.URLSecurityManager;
 
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.doc.XWikiAttachment;
@@ -81,6 +84,7 @@ import com.xpn.xwiki.doc.XWikiAttachment;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -162,7 +166,7 @@ class DefaultOfficeResourceViewerTest
     private XDOMOfficeDocumentBuilder officeDocumentBuilder;
 
     @MockComponent
-    private ResourceReferenceTypeSerializer resourceReferenceSerializer;
+    private ResourceReferenceTypeSerializer resourceReferenceTypeSerializer;
 
     @MockComponent
     private EntityReferenceSerializer<String> entityReferenceSerializer;
@@ -181,15 +185,16 @@ class DefaultOfficeResourceViewerTest
     private PresentationBuilder presentationBuilder;
 
     @MockComponent
-    @Named("standard/tmp")
-    private ResourceReferenceSerializer<TemporaryResourceReference, ExtendedURL>
-        urlTemporaryResourceReferenceSerializer;
+    private ResourceReferenceSerializer<org.xwiki.resource.ResourceReference, ExtendedURL> resourceReferenceSerializer;
 
     @MockComponent
     private TemporaryResourceStore temporaryResourceStore;
 
     @MockComponent
     private TemporaryAttachmentSessionsManager temporaryAttachmentSessionsManager;
+
+    @MockComponent
+    private URLSecurityManager urlSecurityManager;
 
     @XWikiTempDir
     private File tempDir;
@@ -229,7 +234,7 @@ class DefaultOfficeResourceViewerTest
             STRING_DOCUMENT_REFERENCE);
 
         when(attachmentReferenceResolver.resolve(STRING_ATTACHMENT_REFERENCE)).thenReturn(ATTACHMENT_REFERENCE);
-        when(this.resourceReferenceSerializer.serialize(ATTACHMENT_RESOURCE_REFERENCE)).thenReturn(
+        when(this.resourceReferenceTypeSerializer.serialize(ATTACHMENT_RESOURCE_REFERENCE)).thenReturn(
             STRING_ATTACHMENT_RESOURCE_REFERENCE);
 
         when(converterManager.convert(boolean.class, null)).thenReturn(false);
@@ -380,7 +385,7 @@ class DefaultOfficeResourceViewerTest
     {
         ResourceReference resourceReference = new ResourceReference("http://resource", ResourceType.URL);
 
-        when(this.resourceReferenceSerializer.serialize(resourceReference)).thenReturn(
+        when(this.resourceReferenceTypeSerializer.serialize(resourceReference)).thenReturn(
             "url:" + resourceReference.getReference());
 
         OfficeDocumentView officeDocumentView =
@@ -397,7 +402,7 @@ class DefaultOfficeResourceViewerTest
     {
         ResourceReference resourceReference = new ResourceReference("http://resource", ResourceType.URL);
 
-        when(this.resourceReferenceSerializer.serialize(resourceReference)).thenReturn(
+        when(this.resourceReferenceTypeSerializer.serialize(resourceReference)).thenReturn(
             "url:" + resourceReference.getReference());
 
         Map<String, Object> parameters = Collections.emptyMap();
@@ -488,7 +493,7 @@ class DefaultOfficeResourceViewerTest
             Arrays.asList(String.valueOf(viewParameters.hashCode()), "slide0.png"), documentReference);
 
         ExtendedURL extendedURL = new ExtendedURL(Arrays.asList("url", "to", "slide0.png"));
-        when(urlTemporaryResourceReferenceSerializer.serialize(temporaryResourceReference)).thenReturn(extendedURL);
+        when(this.resourceReferenceSerializer.serialize(temporaryResourceReference)).thenReturn(extendedURL);
 
         XDOM output = this.officeResourceViewer.createView(attachResourceRef, viewParameters);
 
@@ -504,5 +509,60 @@ class DefaultOfficeResourceViewerTest
 
         verify(this.temporaryResourceStore).createTemporaryFile(eq(temporaryResourceReference), any(InputStream.class));
         verify(converterResult).close();
+    }
+
+    @Test
+    void viewURLWithLocalFile() throws AccessDeniedException
+    {
+        ResourceReference resourceReference = new ResourceReference("file://resource", ResourceType.URL);
+        when(this.resourceReferenceTypeSerializer.serialize(resourceReference)).thenReturn(
+            "url:" + resourceReference.getReference());
+
+        Map<String, Object> parameters = Collections.emptyMap();
+        DocumentReference ownerDocRef = new DocumentReference("xwiki", "Owner", "Document");
+        when(this.documentAccessBridge.getCurrentDocumentReference()).thenReturn(ownerDocRef);
+
+        Exception expectedException = new Exception("The requested resource [file://resource] uses a protocol [file] "
+            + "that is not supported.");
+
+        Exception exception =
+            assertThrows(Exception.class, () -> this.officeResourceViewer.createView(resourceReference, parameters));
+        assertEquals(expectedException.getMessage(), exception.getMessage());
+    }
+
+    @Test
+    void viewURLWithDistantFile() throws Exception
+    {
+        ResourceReference resourceReference = new ResourceReference("http://mydomain.com/myfile", ResourceType.URL);
+        when(this.resourceReferenceTypeSerializer.serialize(resourceReference)).thenReturn(
+            "url:" + resourceReference.getReference());
+
+        Map<String, Object> parameters = Collections.emptyMap();
+        DocumentReference ownerDocRef = new DocumentReference("xwiki", "Owner", "Document");
+        when(this.documentAccessBridge.getCurrentDocumentReference()).thenReturn(ownerDocRef);
+
+        URL resourceUrl = new URL("http://mydomain.com/myfile");
+        when(this.urlSecurityManager.isDomainTrusted(resourceUrl)).thenReturn(false);
+
+        Exception expectedException = new Exception("The requested resource [http://mydomain.com/myfile] does not "
+            + "belong to the list of trusted domains. "
+            + "Please ask your administrator to add it to the list of trusted domains to access it.");
+
+        Exception exception =
+            assertThrows(Exception.class, () -> this.officeResourceViewer.createView(resourceReference, parameters));
+        assertEquals(expectedException.getMessage(), exception.getMessage());
+
+        when(this.urlSecurityManager.isDomainTrusted(resourceUrl)).thenReturn(true);
+
+        XDOMOfficeDocument xdomOfficeDocument = mock(XDOMOfficeDocument.class);
+        when(this.officeDocumentBuilder.build(any(InputStream.class), eq("myfile"), eq(ownerDocRef), eq(false)))
+            .thenReturn(xdomOfficeDocument);
+
+        XDOM expectedXDOM = mock(XDOM.class);
+        when(xdomOfficeDocument.getContentDocument()).thenReturn(expectedXDOM);
+        when(expectedXDOM.clone()).thenReturn(expectedXDOM);
+        when(expectedXDOM.getBlocks(any(), any())).thenReturn(Collections.emptyList());
+        XDOM xdom = this.officeResourceViewer.createView(resourceReference, parameters);
+        assertSame(expectedXDOM, xdom);
     }
 }

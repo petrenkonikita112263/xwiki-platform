@@ -29,7 +29,6 @@
   <creator>xwiki:XWiki.Admin</creator>
   <parent>AppWithinMinutes.WebHome</parent>
   <author>xwiki:XWiki.Admin</author>
-  <originalMetadataAuthor>xwiki:XWiki.Admin</originalMetadataAuthor>
   <contentAuthor>xwiki:XWiki.Admin</contentAuthor>
   <version>1.1</version>
   <title>#if ("$!appTitle" != '')$appTitle#else$doc.pageReference.name#end</title>
@@ -105,7 +104,7 @@ xcontext.put('propertyCustomDisplayer', new PropertyCustomDisplayer(xcontext))
     #foreach ($category in $services.query.xwql($categoryListStatement).execute())
       #set ($categoryDoc = $xwiki.getDocument($category))
       &lt;li&gt;
-        &lt;div class="category"&gt;$categoryDoc.plainTitle&lt;/div&gt;
+        &lt;div class="category"&gt;$escapetool.xml($categoryDoc.plainTitle)&lt;/div&gt;
         #set ($formFieldsForCategoryStatement = "from doc.object($formFieldClassName) as field where field.category = :category order by field.priority")
         #set ($formFieldsForCategoryQuery = $services.query.xwql($formFieldsForCategoryStatement).bindValue('category', $category))
         &lt;ul&gt;
@@ -120,7 +119,7 @@ xcontext.put('propertyCustomDisplayer', new PropertyCustomDisplayer(xcontext))
             #else
               #set ($formFieldIconURL = $formFieldDoc.getAttachmentURL($formFieldIcon))
             #end
-            #set ($formFieldIconRendered = "&lt;img src='$formFieldIconURL' alt='$escapetool.xml($formFieldDoc.plainTitle)' class='icon' /&gt;")
+            #set ($formFieldIconRendered = "&lt;img src='$escapetool.xml($formFieldIconURL)' alt='$escapetool.xml($formFieldDoc.plainTitle)' class='icon' /&gt;")
           #end
           &lt;li class="field"&gt;
             $formFieldIconRendered
@@ -136,11 +135,12 @@ xcontext.put('propertyCustomDisplayer', new PropertyCustomDisplayer(xcontext))
             #set ($fieldURL = $doc.getURL('edit', $escapetool.url({
               'xpage': 'plain',
               'sheet': 'AppWithinMinutes.ClassEditSheet',
+              'form_token': $services.csrf.getToken(),
               'template': 'AppWithinMinutes.ClassTemplate',
               'field': $formFieldDoc.fullName,
               'xeditmode': 'text'
             })))
-            &lt;input type="hidden" value="$fieldURL" class="data"/&gt;
+            &lt;input type="hidden" value="$escapetool.xml($fieldURL)" class="data"/&gt;
           &lt;/li&gt;
         #end
         &lt;/ul&gt;
@@ -716,6 +716,7 @@ xcontext.put('propertyCustomDisplayer', new PropertyCustomDisplayer(xcontext))
       })
       #if (!$xwiki.exists($templateProviderReference))
         #set ($discard = $queryString.putAll({
+          'form_token': $services.csrf.getToken(),
           'template': 'XWiki.TemplateProviderTemplate',
           'parent': $doc.fullName
         }))

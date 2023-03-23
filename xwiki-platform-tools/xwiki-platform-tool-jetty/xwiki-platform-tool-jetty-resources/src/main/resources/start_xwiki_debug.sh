@@ -138,7 +138,7 @@ if [ -z "$XWIKI_OPTS" ] ; then
   XWIKI_OPTS="-Xmx1024m"
 fi
 XWIKI_OPTS="$XWIKI_OPTS -Xdebug -Xnoagent -Djava.compiler=NONE"
-XWIKI_OPTS="$XWIKI_OPTS -Xrunjdwp:transport=dt_socket,server=y,suspend=${SUSPEND},address=${JETTY_DEBUG_PORT}"
+XWIKI_OPTS="$XWIKI_OPTS -Xrunjdwp:transport=dt_socket,server=y,suspend=${SUSPEND},address=*:${JETTY_DEBUG_PORT}"
 
 # Check if a lock file already exists for the specified port  which means an XWiki instance is already running
 XWIKI_LOCK_FILE="${XWIKI_LOCK_DIR}/xwiki-${JETTY_PORT}.lck"
@@ -278,4 +278,4 @@ echo $XWIKI_PID > $XWIKI_LOCK_FILE
 
 # This replaces the shell with the java process without starting a new process. This must be the last line
 # of this script as anything after won't be executed.
-exec java $XWIKI_OPTS -jar ${JETTY_HOME}/start.jar --module=xwiki $JETTY_OPTS
+exec java $XWIKI_OPTS -jar ${JETTY_HOME}/start.jar $JETTY_OPTS

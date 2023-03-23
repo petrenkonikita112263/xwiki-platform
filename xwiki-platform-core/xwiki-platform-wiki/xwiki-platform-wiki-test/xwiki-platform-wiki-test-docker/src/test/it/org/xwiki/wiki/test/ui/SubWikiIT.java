@@ -28,9 +28,13 @@ import org.xwiki.model.EntityType;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.SpaceReference;
 import org.xwiki.model.reference.WikiReference;
+import org.xwiki.repository.test.SolrTestUtils;
 import org.xwiki.test.docker.junit5.ExtensionOverride;
+import org.xwiki.test.docker.junit5.TestConfiguration;
 import org.xwiki.test.docker.junit5.TestReference;
 import org.xwiki.test.docker.junit5.UITest;
+import org.xwiki.test.docker.junit5.servletengine.ServletEngine;
+import org.xwiki.test.integration.XWikiExecutor;
 import org.xwiki.test.ui.TestUtils;
 import org.xwiki.test.ui.po.CopyOrRenameOrDeleteStatusPage;
 import org.xwiki.test.ui.po.RenamePage;
@@ -58,16 +62,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @UITest(
     properties = {
         // The Notifications module contributes a Hibernate mapping that needs to be added to hibernate.cfg.xml
-        "xwikiDbHbmCommonExtraMappings=notification-filter-preferences.hbm.xml",
-        // Prevent the DW from starting. This is needed because xwiki-platform-extension-distribution is provisioned
-        // transitively by org.xwiki.platform:xwiki-platform-wiki-creationjob and will cause a ClassNotFoundException
-        // since Struts is in the webapp CL and will not see the DistributionAction located in the extension CL. And
-        // even if the class was found the DW would start which is not something we want.
-        "xwikiPropertiesAdditionalProperties=distribution.automaticStartOnMainWiki=false"
+        "xwikiDbHbmCommonExtraMappings=notification-filter-preferences.hbm.xml"
     },
     extraJARs = {
         // It's currently not possible to install a JAR contributing a Hibernate mapping file as an Extension. Thus
-        // we need to provide the JAR inside WEB-INF/lib. See https://jira.xwiki.org/browse/XWIKI-8271
+        // we need to provide the JAR inside WEB-INF/lib. See https://jira.xwiki.org/browse/XWIKI-19932
         "org.xwiki.platform:xwiki-platform-notifications-filters-default",
         // Required by components located in a core extensions
         "org.xwiki.platform:xwiki-platform-wiki-template-default",
@@ -97,7 +96,8 @@ class SubWikiIT
 
     @Test
     @Order(1)
-    void movePageToSubwiki(TestUtils setup, TestReference testReference) throws Exception
+    void movePageToSubwiki(TestUtils setup, TestReference testReference, TestConfiguration testConfiguration)
+        throws Exception
     {
         createSubWiki(setup);
 
@@ -123,6 +123,9 @@ class SubWikiIT
         // For checking the link update.
         setup.createPage(mainWikiLinkPage, String.format("[[%s.WebHome]]", space));
 
+        // Wait for the Solr indexing to be completed before moving the page
+        new SolrTestUtils(setup, computedHostURL(testConfiguration)).waitEmptyQueue();
+
         // Move the page to subwiki.
         ViewPage viewPage = setup.gotoPage(testReference);
         RenamePage renamePage = viewPage.rename();
@@ -146,6 +149,13 @@ class SubWikiIT
         assertEquals(String.format("[[subwiki:%s.WebHome]]", space), wikiEditPage.getContent());
 
         deleteSubWiki(setup);
+    }
+
+    private String computedHostURL(TestConfiguration testConfiguration)
+    {
+        ServletEngine servletEngine = testConfiguration.getServletEngine();
+        return String.format("http://%s:%d%s", servletEngine.getIP(), servletEngine.getPort(),
+            XWikiExecutor.DEFAULT_CONTEXT);
     }
 
     /**

@@ -40,6 +40,7 @@ import org.mockito.internal.util.MockUtil;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.stubbing.Answer;
 import org.suigeneris.jrcs.rcs.Version;
+import org.xwiki.bridge.DocumentAccessBridge;
 import org.xwiki.bridge.event.DocumentCreatedEvent;
 import org.xwiki.bridge.event.DocumentDeletedEvent;
 import org.xwiki.bridge.event.DocumentUpdatedEvent;
@@ -54,6 +55,7 @@ import org.xwiki.context.ExecutionContext;
 import org.xwiki.context.ExecutionContextManager;
 import org.xwiki.environment.Environment;
 import org.xwiki.environment.internal.ServletEnvironment;
+import org.xwiki.model.document.DocumentAuthors;
 import org.xwiki.model.internal.reference.EntityReferenceFactory;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.DocumentReferenceResolver;
@@ -63,8 +65,8 @@ import org.xwiki.model.validation.EntityNameValidationConfiguration;
 import org.xwiki.model.validation.EntityNameValidationManager;
 import org.xwiki.observation.ObservationManager;
 import org.xwiki.query.QueryManager;
-import org.xwiki.refactoring.internal.LinkRefactoring;
 import org.xwiki.refactoring.internal.ModelBridge;
+import org.xwiki.refactoring.internal.ReferenceUpdater;
 import org.xwiki.rendering.syntax.Syntax;
 import org.xwiki.script.ScriptContextManager;
 import org.xwiki.script.internal.CloneableSimpleScriptContext;
@@ -84,11 +86,14 @@ import org.xwiki.wiki.descriptor.WikiDescriptorManager;
 import com.xpn.xwiki.CoreConfiguration;
 import com.xpn.xwiki.XWiki;
 import com.xpn.xwiki.XWikiContext;
+import com.xpn.xwiki.XWikiException;
+import com.xpn.xwiki.doc.DocumentRevisionProvider;
 import com.xpn.xwiki.doc.XWikiAttachment;
 import com.xpn.xwiki.doc.XWikiDocument;
 import com.xpn.xwiki.doc.XWikiDocumentArchive;
 import com.xpn.xwiki.doc.rcs.XWikiRCSNodeInfo;
 import com.xpn.xwiki.internal.XWikiCfgConfigurationSource;
+import com.xpn.xwiki.internal.filter.XWikiDocumentFilterUtils;
 import com.xpn.xwiki.internal.store.hibernate.HibernateStore;
 import com.xpn.xwiki.objects.classes.BaseClass;
 import com.xpn.xwiki.plugin.XWikiPluginManager;
@@ -109,6 +114,7 @@ import static com.xpn.xwiki.test.mockito.OldcoreMatchers.anyXWikiContext;
 import static com.xpn.xwiki.test.mockito.OldcoreMatchers.anyXWikiDocument;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
@@ -186,6 +192,8 @@ public class MockitoOldcore
     private ScriptContext scriptContext;
 
     private Environment environment;
+
+    private DocumentAccessBridge documentAccessBridge;
 
     private boolean mockXWiki = true;
 
@@ -457,8 +465,8 @@ public class MockitoOldcore
             this.componentManager.registerMockComponent(ModelBridge.class);
         }
 
-        if (!this.componentManager.hasComponent(LinkRefactoring.class)) {
-            this.componentManager.registerMockComponent(LinkRefactoring.class);
+        if (!this.componentManager.hasComponent(ReferenceUpdater.class)) {
+            this.componentManager.registerMockComponent(ReferenceUpdater.class);
         }
 
         // Make sure to a have an URLConfiguration component.
@@ -473,6 +481,38 @@ public class MockitoOldcore
         }
         if (!this.componentManager.hasComponent(EntityNameValidationConfiguration.class)) {
             this.componentManager.registerMockComponent(EntityNameValidationConfiguration.class);
+        }
+
+        boolean supportRevisionStore = this.componentManager.hasComponent(XWikiDocumentFilterUtils.class);
+
+        // Mock getting document revisions using DocumentRevisionProvider.
+        if (supportRevisionStore && !this.componentManager.hasComponent(DocumentRevisionProvider.class, "database")) {
+            DocumentRevisionProvider documentRevisionProvider =
+                this.componentManager.registerMockComponent(DocumentRevisionProvider.class, "database");
+
+            when(documentRevisionProvider.getRevision(any(DocumentReference.class), anyString()))
+                .then(invocation -> {
+                    DocumentReference reference = invocation.getArgument(0);
+                    String revision = invocation.getArgument(1);
+                    XWikiDocument document = getSpyXWiki().getDocument(reference, this.context);
+
+                    return documentRevisionProvider.getRevision(document, revision);
+                });
+
+            when(documentRevisionProvider.getRevision(anyXWikiDocument(), anyString()))
+                .then(invocation -> {
+                        XWikiDocument baseDocument = invocation.getArgument(0);
+                        String revision = invocation.getArgument(1);
+                        return getMockVersioningStore().loadXWikiDoc(baseDocument, revision, this.context);
+                    }
+                );
+        }
+
+        // Set the default revision provider to the database-one when missing as this covers most cases.
+        if (supportRevisionStore && !this.componentManager.hasComponent(DocumentRevisionProvider.class)) {
+            DocumentRevisionProvider databaseRevisionProvider =
+                this.componentManager.getInstance(DocumentRevisionProvider.class, "database");
+            this.componentManager.registerComponent(DocumentRevisionProvider.class, databaseRevisionProvider);
         }
 
         getXWikiContext().setLocale(Locale.ENGLISH);
@@ -579,13 +619,22 @@ public class MockitoOldcore
 
                     document.setContentDirty(false);
                     document.setMetaDataDirty(false);
+
+                    if (supportRevisionStore) {
+                        // Save the document in the document archive.
+                        getMockVersioningStore().updateXWikiDocArchive(document, true, xcontext);
+                    }
                 }
                 document.setNew(false);
                 document.setStore(getMockStore());
 
+                // Make sure the document is not restricted.
+                document.setRestricted(false);
+
                 XWikiDocument savedDocument = document.clone();
 
                 documents.put(document.getDocumentReferenceWithLocale(), savedDocument);
+
 
                 // Set the document as it's original document
                 savedDocument.setOriginalDocument(savedDocument.clone());
@@ -668,14 +717,42 @@ public class MockitoOldcore
             }
         }).when(getMockVersioningStore()).updateXWikiDocArchive(any(), anyBoolean(), any());
 
+        doAnswer(invocation -> {
+            XWikiDocument baseDocument = invocation.getArgument(0);
+            String revision = invocation.getArgument(1);
+            XWikiContext xContext = invocation.getArgument(2);
+
+            XWikiDocumentArchive archive = getMockVersioningStore().getXWikiDocumentArchive(baseDocument, xContext);
+            Version version = new Version(revision);
+
+            XWikiDocument doc = archive.loadDocument(version, xContext);
+            if (doc == null) {
+                Object[] args = { baseDocument.getDocumentReferenceWithLocale(), version.toString() };
+                throw new XWikiException(XWikiException.MODULE_XWIKI_STORE,
+                    XWikiException.ERROR_XWIKI_STORE_HIBERNATE_UNEXISTANT_VERSION,
+                    "Version {1} does not exist while reading document {0}", null, args);
+            }
+
+            doc.setStore(baseDocument.getStore());
+
+            // Make sure the attachment of the revision document have the right store
+            for (XWikiAttachment revisionAttachment : doc.getAttachmentList()) {
+                XWikiAttachment attachment = baseDocument.getAttachment(revisionAttachment.getFilename());
+
+                if (attachment != null) {
+                    revisionAttachment.setContentStore(attachment.getContentStore());
+                    revisionAttachment.setArchiveStore(attachment.getArchiveStore());
+                }
+            }
+
+            return doc;
+        }).when(getMockVersioningStore()).loadXWikiDoc(anyXWikiDocument(), anyString(), anyXWikiContext());
+
         // XWiki
 
         if (this.mockXWiki) {
-            doAnswer(new Answer<XWikiDocument>()
-            {
-                @Override
-                public XWikiDocument answer(InvocationOnMock invocation) throws Throwable
-                {
+            if (!supportRevisionStore) {
+                doAnswer((Answer<XWikiDocument>) invocation -> {
                     XWikiDocument doc = invocation.getArgument(0);
                     String revision = invocation.getArgument(1);
 
@@ -683,10 +760,9 @@ public class MockitoOldcore
                         return doc;
                     }
 
-                    // TODO: implement version store mocking
                     return new XWikiDocument(doc.getDocumentReference());
-                }
-            }).when(getSpyXWiki()).getDocument(anyXWikiDocument(), any(), anyXWikiContext());
+                }).when(getSpyXWiki()).getDocument(anyXWikiDocument(), any(), anyXWikiContext());
+            }
             doAnswer(new Answer<XWikiDocument>()
             {
                 @Override
@@ -712,6 +788,7 @@ public class MockitoOldcore
                     XWikiDocument document = invocation.getArgument(0);
                     String comment = invocation.getArgument(1);
                     boolean minorEdit = invocation.getArgument(2);
+                    XWikiContext xcontext = invocation.getArgument(3);
 
                     boolean isNew = document.isNew();
 
@@ -719,15 +796,22 @@ public class MockitoOldcore
                     document.setMinorEdit(minorEdit);
 
                     if (document.isContentDirty() || document.isMetaDataDirty()) {
-                        document.setDate(new Date());
+                        Date ndate = new Date();
+                        document.setDate(ndate);
                         if (document.isContentDirty()) {
-                            document.setContentUpdateDate(new Date());
-                            document.setContentAuthorReference(document.getAuthorReference());
+                            document.setContentUpdateDate(ndate);
+                            DocumentAuthors authors = document.getAuthors();
+                            authors.setContentAuthor(authors.getEffectiveMetadataAuthor());
                         }
                         document.incrementVersion();
 
                         document.setContentDirty(false);
                         document.setMetaDataDirty(false);
+
+                        // Save the document in the document archive.
+                        if (supportRevisionStore) {
+                            getMockVersioningStore().updateXWikiDocArchive(document, true, xcontext);
+                        }
                     }
                     document.setNew(false);
                     document.setStore(getMockStore());
@@ -749,6 +833,9 @@ public class MockitoOldcore
                             spyXWiki.getDocument(document.getDocumentReferenceWithLocale(), getXWikiContext());
                         document.setOriginalDocument(originalDocument);
                     }
+
+                    // Make sure the document is not restricted.
+                    document.setRestricted(false);
 
                     XWikiDocument savedDocument = document.clone();
 
@@ -925,6 +1012,25 @@ public class MockitoOldcore
             }).when(getSpyXWiki()).getGlobalRightsClass(anyXWikiContext());
         }
 
+        // DocumentAccessBridge
+        if (!this.componentManager.hasComponent(DocumentAccessBridge.class)) {
+            this.documentAccessBridge = this.componentManager.registerMockComponent(DocumentAccessBridge.class);
+        } else {
+            this.documentAccessBridge = this.componentManager.getInstance(DocumentAccessBridge.class);
+        }
+        if (MockUtil.isMock(this.documentAccessBridge)) {
+            when(this.documentAccessBridge.exists(any(DocumentReference.class))).thenAnswer(new Answer<Boolean>()
+            {
+                @Override
+                public Boolean answer(InvocationOnMock invocation) throws Throwable
+                {
+                    DocumentReference documentReference = invocation.getArgument(0);
+
+                    return spyXWiki.exists(documentReference, context);
+                }
+            });
+        }
+
         // Query Manager
         // If there's already a Query Manager registered, use it instead.
         // This allows, for example, using @ComponentList to use the real Query Manager, in integration tests.
@@ -1038,6 +1144,15 @@ public class MockitoOldcore
     public File getTemporaryDirectory()
     {
         return this.temporaryDirectory;
+    }
+
+    /**
+     * @since 15.0RC1
+     * @since 14.10.2
+     */
+    public DocumentAccessBridge getDocumentAccessBridge()
+    {
+        return this.documentAccessBridge;
     }
 
     public XWikiRightService getMockRightService()

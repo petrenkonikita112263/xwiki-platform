@@ -23,7 +23,7 @@
   <parent>
     <groupId>org.xwiki.commons</groupId>
     <artifactId>xwiki-commons-pom</artifactId>
-    <version>14.4-SNAPSHOT</version>
+    <version>15.3-SNAPSHOT</version>
     <!-- Note: Do NOT set the <relativePath> tag here as this can cause issues. For example imagine you're using
          Jenkins and you have the following directory structure:
              workspace/xwiki-commons
@@ -41,30 +41,34 @@
   <artifactId>xwiki-platform</artifactId>
   <name>XWiki Platform - Parent POM</name>
   <packaging>pom</packaging>
-  <version>14.4-SNAPSHOT</version>
+  <version>15.3-SNAPSHOT</version>
   <description>XWiki Platform - Parent POM</description>
   <properties>
     <!-- Useful for external Maven projects that extend the Platform POM. Must not be used by Platform project! -->
     <platform.version>${commons.version}</platform.version>
     <!-- Versions of XWiki dependencies used in Platform modules -->
     <rendering.version>${platform.version}</rendering.version>
-    <!-- Version of HSQLDB that we use in Platform when import XARs for creating functional test environments -->
-    <hsqldb.version>2.6.1</hsqldb.version>
 
     <!-- Dependencies versions -->
-    <ckeditor.version>1.62</ckeditor.version>
     <bootstrap.version>3.4.1</bootstrap.version>
-    <batik.version>1.14</batik.version>
+    <batik.version>1.16</batik.version>
     <restlet.version>2.3.12</restlet.version>
-    <tika.version>2.4.0</tika.version>
-    <pdfbox.version>2.0.26</pdfbox.version>
+    <tika.version>2.7.0</tika.version>
+    <pdfbox.version>2.0.27</pdfbox.version>
     <keypress.version>2.1.5</keypress.version>
+    <jetty.version>9.4.49.v20220914</jetty.version>
+    <netty.version>4.1.90.Final</netty.version>
+    <hibernate.version>5.6.15.Final</hibernate.version>
+    <dockerJava.version>3.3.0</dockerJava.version>
 
-    <!-- Jetty version -->
-    <jetty.version>9.4.29.v20200521</jetty.version>
-
-    <!-- Netty version -->
-    <netty.version>4.1.77.Final</netty.version>
+    <!-- Versions of other software we need in our functional tests -->
+    <testcontainers.version>1.17.6</testcontainers.version>
+    <!-- The LO version must point to the latest version from "Still" branch (LTS). When upgrading the version make
+         sure the new version is available from https://download.documentfoundation.org/libreoffice/stable/
+         Note: We don't need to exact version (e.g. 7.2.7.2) since the LTS is made available using a max of 2 dots
+         (e.g. 7.2.7).
+    -->
+    <libreoffice.version>7.4.6</libreoffice.version>
 
     <!-- By default check that unit tests don't output anything to the console -->
     <xwiki.surefire.captureconsole.skip>false</xwiki.surefire.captureconsole.skip>
@@ -85,33 +89,29 @@
 
     <xwiki.enforcer.check-dependency-version.skip>${xwiki.enforcer.skip}</xwiki.enforcer.check-dependency-version.skip>
     <xwiki.enforcer.enforce-tika2-parsers.skip>${xwiki.enforcer.skip}</xwiki.enforcer.enforce-tika2-parsers.skip>
-
-    <!-- Hibernate -->
-    <hibernate.version>5.6.8.Final</hibernate.version>
+    <xwiki.enforcer.banneddependencytype-xar.skip>${xwiki.enforcer.skip}</xwiki.enforcer.banneddependencytype-xar.skip>
+    <xwiki.enforcer.mysql-connector-id.skip>${xwiki.enforcer.skip}</xwiki.enforcer.mysql-connector-id.skip>
+    <xwiki.enforcer.enforce-no-old-xwiki-platform.skip>${xwiki.enforcer.skip}</xwiki.enforcer.enforce-no-old-xwiki-platform.skip>
 
     <!-- Versions of JDBC connectors we want to use in our distribution, in our tests and when using build tools -->
     <hsqldb.groupId>org.hsqldb</hsqldb.groupId>
     <hsqldb.artifactId>hsqldb</hsqldb.artifactId>
-    <mysql.groupId>mysql</mysql.groupId>
-    <mysql.artifactId>mysql-connector-java</mysql.artifactId>
-    <mysql.version>8.0.29</mysql.version>
+    <hsqldb.version>2.7.1</hsqldb.version>
+    <mysql.groupId>com.mysql</mysql.groupId>
+    <mysql.artifactId>mysql-connector-j</mysql.artifactId>
+    <mysql.version>8.0.32</mysql.version>
     <mariadb.groupId>org.mariadb.jdbc</mariadb.groupId>
     <mariadb.artifactId>mariadb-java-client</mariadb.artifactId>
-    <mariadb.version>3.0.4</mariadb.version>
+    <mariadb.version>3.1.2</mariadb.version>
     <derby.groupId>org.apache.derby</derby.groupId>
     <derby.artifactId>derby</derby.artifactId>
     <derby.version>10.14.2.0</derby.version>
     <pgsql.groupId>org.postgresql</pgsql.groupId>
     <pgsql.artifactId>postgresql</pgsql.artifactId>
-    <pgsql.version>42.3.5</pgsql.version>
-    <oracle.groupId>com.oracle.ojdbc</oracle.groupId>
+    <pgsql.version>42.6.0</pgsql.version>
+    <oracle.groupId>com.oracle.database.jdbc</oracle.groupId>
     <oracle.artifactId>ojdbc8</oracle.artifactId>
-    <oracle.version>19.3.0.0</oracle.version>
-
-    <!-- Versions of other software we need in our functional tests -->
-    <!-- The LO version must point to the latest version from "Still" branch (LTS). When upgrading the version make
-         sure the new version is available from https://downloadarchive.documentfoundation.org/libreoffice/old/ -->
-    <libreoffice.version>7.2.6.2</libreoffice.version>
+    <oracle.version>21.9.0.0</oracle.version>
   </properties>
   <scm>
     <connection>scm:git:git://github.com/xwiki/xwiki-platform.git</connection>
@@ -166,7 +166,7 @@
       <dependency>
         <groupId>org.liquibase</groupId>
         <artifactId>liquibase-core</artifactId>
-        <version>4.10.0</version>
+        <version>4.20.0</version>
         <exclusions>
           <!-- Not the right id -->
           <exclusion>
@@ -181,7 +181,7 @@
       <dependency>
         <groupId>org.python</groupId>
         <artifactId>jython-slim</artifactId>
-        <version>2.7.2</version>
+        <version>2.7.3</version>
         <exclusions>
           <!-- Not need in the context of XWiki and cause conflict with other dependencies -->
           <exclusion>
@@ -208,15 +208,19 @@
             <groupId>javax.ws.rs</groupId>
             <artifactId>javax.ws.rs-api</artifactId>
           </exclusion>
-          <!-- Wrong id -->
-          <exclusion>
-            <groupId>javax.annotation</groupId>
-            <artifactId>javax.annotation-api</artifactId>
-          </exclusion>
-          <!-- Remove when is https://issues.apache.org/jira/browse/TIKA-3537 fixed -->
+          <!-- Remove when https://issues.apache.org/jira/browse/TIKA-3537 is fixed -->
           <exclusion>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
+          </exclusion>
+          <!-- Wrong ids -->
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcmail-jdk15on</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk15on</artifactId>
           </exclusion>
         </exclusions>
       </dependency>
@@ -234,6 +238,17 @@
         <groupId>org.apache.tika</groupId>
         <artifactId>tika-parser-crypto-module</artifactId>
         <version>${tika.version}</version>
+        <exclusions>
+          <!-- Wrong ids -->
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcmail-jdk15on</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk15on</artifactId>
+          </exclusion>
+        </exclusions>
       </dependency>
       <dependency>
         <groupId>org.apache.tika</groupId>
@@ -270,6 +285,15 @@
             <groupId>commons-logging</groupId>
             <artifactId>commons-logging</artifactId>
           </exclusion>
+          <!-- Wrong ids -->
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcmail-jdk15on</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk15on</artifactId>
+          </exclusion>
         </exclusions>
       </dependency>
       <dependency>
@@ -286,6 +310,15 @@
           <exclusion>
             <groupId>commons-logging</groupId>
             <artifactId>commons-logging</artifactId>
+          </exclusion>
+          <!-- Wrong ids -->
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcmail-jdk15on</artifactId>
+          </exclusion>
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk15on</artifactId>
           </exclusion>
         </exclusions>
       </dependency>
@@ -367,12 +400,12 @@
       <dependency>
         <groupId>com.rometools</groupId>
         <artifactId>rome</artifactId>
-        <version>1.18.0</version>
+        <version>2.1.0</version>
       </dependency>
       <dependency>
         <groupId>com.rometools</groupId>
         <artifactId>rome-utils</artifactId>
-        <version>1.18.0</version>
+        <version>2.1.0</version>
       </dependency>
       <dependency>
         <!-- Replace the runtime transitive dependency we excluded above with this one which repackages the NekoHTML classes to prevent conflicts. -->
@@ -380,13 +413,6 @@
         <artifactId>boilerpipe</artifactId>
         <version>1.2.0-xwiki</version>
         <scope>runtime</scope>
-      </dependency>
-      <!-- Embedded in the Standard Flavor and used by the Dashboard Application (to add/edit gadgets) -->
-      <dependency>
-        <groupId>org.xwiki.contrib</groupId>
-        <artifactId>application-ckeditor-ui</artifactId>
-        <version>${ckeditor.version}</version>
-        <type>xar</type>
       </dependency>
       <!-- Drawn by several transitive dependencies -->
       <dependency>
@@ -398,7 +424,7 @@
       <dependency>
         <groupId>joda-time</groupId>
         <artifactId>joda-time</artifactId>
-        <version>2.10.14</version>
+        <version>2.12.2</version>
       </dependency>
       <!-- Common WebJars -->
       <dependency>
@@ -429,6 +455,12 @@
         <groupId>org.webjars</groupId>
         <artifactId>bootstrap-select</artifactId>
         <version>1.13.18</version>
+        <scope>runtime</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.webjars.npm</groupId>
+        <artifactId>bootstrap-3-typeahead</artifactId>
+        <version>4.0.2</version>
         <scope>runtime</scope>
       </dependency>
       <dependency>
@@ -537,7 +569,12 @@
       <dependency>
         <groupId>net.java.dev.jna</groupId>
         <artifactId>jna</artifactId>
-        <version>5.11.0</version>
+        <version>5.13.0</version>
+      </dependency>
+      <dependency>
+        <groupId>net.java.dev.jna</groupId>
+        <artifactId>jna-platform</artifactId>
+        <version>5.13.0</version>
       </dependency>
 
       <dependency>
@@ -554,7 +591,7 @@
       <dependency>
         <groupId>org.jsoup</groupId>
         <artifactId>jsoup</artifactId>
-        <version>1.14.3</version>
+        <version>1.15.4</version>
       </dependency>
 
       <!-- PDF -->
@@ -619,7 +656,7 @@
       <dependency>
         <groupId>org.apache.xmlgraphics</groupId>
         <artifactId>xmlgraphics-commons</artifactId>
-        <version>2.7</version>
+        <version>2.8</version>
         <exclusions>
           <!-- We want to choose the SLF4J binding only when XWiki is packaged. -->
           <exclusion>
@@ -639,24 +676,24 @@
       <dependency>
         <groupId>com.github.jsqlparser</groupId>
         <artifactId>jsqlparser</artifactId>
-        <version>4.2</version>
+        <version>4.6</version>
       </dependency>
 
       <!-- JNR -->
       <dependency>
         <groupId>com.github.jnr</groupId>
         <artifactId>jffi</artifactId>
-        <version>1.3.9</version>
+        <version>1.3.11</version>
       </dependency>
       <dependency>
         <groupId>com.github.jnr</groupId>
         <artifactId>jnr-constants</artifactId>
-        <version>0.10.3</version>
+        <version>0.10.4</version>
       </dependency>
       <dependency>
         <groupId>com.github.jnr</groupId>
         <artifactId>jnr-ffi</artifactId>
-        <version>2.2.12</version>
+        <version>2.2.13</version>
       </dependency>
       <dependency>
         <groupId>com.github.jnr</groupId>
@@ -666,7 +703,7 @@
       <dependency>
         <groupId>com.github.jnr</groupId>
         <artifactId>jnr-posix</artifactId>
-        <version>3.1.15</version>
+        <version>3.1.16</version>
       </dependency>
       <dependency>
         <groupId>com.github.jnr</groupId>
@@ -674,25 +711,23 @@
         <version>1.0.2</version>
       </dependency>
 
-      <!-- Carte Utils -->
+      <!-- Carte CSS4J and co -->
       <dependency>
         <groupId>io.sf.carte</groupId>
         <artifactId>css4j</artifactId>
-        <version>3.7.2</version>
+        <version>3.9.1</version>
       </dependency>
-
-      <!-- Carte CSS4J -->
       <dependency>
         <groupId>io.sf.carte</groupId>
         <artifactId>carte-util</artifactId>
         <!-- Note: has a different release cycle than CSS4J -->
-        <version>3.5.1</version>
+        <version>3.6.0</version>
       </dependency>
       <dependency>
         <groupId>io.sf.carte</groupId>
         <artifactId>css4j-dom4j</artifactId>
         <!-- Note: has a different release cycle than CSS4J "core" -->
-        <version>3.7.1</version>
+        <version>3.9.1</version>
       </dependency>
 
       <!-- Carte XML DTD -->
@@ -700,7 +735,7 @@
         <groupId>io.sf.carte</groupId>
         <artifactId>xml-dtd</artifactId>
         <!-- Note: has a different release cycle than CSS4J -->
-        <version>4.0.0</version>
+        <version>4.1.1</version>
       </dependency>
 
       <!-- Restlet -->
@@ -807,7 +842,7 @@
       <dependency>
         <groupId>com.icegreen</groupId>
         <artifactId>greenmail-junit5</artifactId>
-        <version>1.6.9</version>
+        <version>1.6.14</version>
       </dependency>
 
       <!-- Make sure to use a version of the Jetty client libraries matching the Jetty version we package -->
@@ -930,6 +965,48 @@
         <groupId>org.jetbrains</groupId>
         <artifactId>annotations</artifactId>
         <version>19.0.0</version>
+      </dependency>
+
+      <!-- Fast Diff -->
+      <dependency>
+        <groupId>org.webjars.npm</groupId>
+        <artifactId>fast-diff</artifactId>
+        <version>1.2.0</version>
+        <scope>runtime</scope>
+      </dependency>
+
+      <!-- Docker -->
+      <dependency>
+        <groupId>com.github.docker-java</groupId>
+        <artifactId>docker-java-api</artifactId>
+        <version>${dockerJava.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.github.docker-java</groupId>
+        <artifactId>docker-java</artifactId>
+        <version>${dockerJava.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.github.docker-java</groupId>
+        <artifactId>docker-java-core</artifactId>
+        <version>${dockerJava.version}</version>
+        <exclusions>
+          <!-- Wrong id -->
+          <exclusion>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk15on</artifactId>
+          </exclusion>
+        </exclusions>
+      </dependency>
+      <dependency>
+        <groupId>com.github.docker-java</groupId>
+        <artifactId>docker-java-transport-httpclient5</artifactId>
+        <version>${dockerJava.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.github.docker-java</groupId>
+        <artifactId>docker-java-transport-zerodep</artifactId>
+        <version>${dockerJava.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -1079,7 +1156,7 @@
 
               <!-- Right id of the The Bouncy Castle Crypto packages -->
               <extensionOverride>
-                <id>org.bouncycastle:bcprov-jdk15on</id>
+                <id>org.bouncycastle:bcprov-jdk18on</id>
                 <features>
                   bouncycastle:bcprov-jdk16/140,
                   bouncycastle:bcprov-jdk15/140,
@@ -1091,11 +1168,12 @@
                   org.bouncycastle:bcprov-jdk14,
                   org.bouncycastle:bcprov-jdk13,
                   org.bouncycastle:bcprov-jdk12,
-                  org.bouncycastle:bcprov-jdk15to18
+                  org.bouncycastle:bcprov-jdk15to18,
+                  org.bouncycastle:bcprov-jdk15on
                 </features>
               </extensionOverride>
               <extensionOverride>
-                <id>org.bouncycastle:bcpkix-jdk15on</id>
+                <id>org.bouncycastle:bcpkix-jdk18on</id>
                 <features>
                   bouncycastle:bcpkix-jdk16/140,
                   bouncycastle:bcpkix-jdk15/140,
@@ -1107,11 +1185,12 @@
                   org.bouncycastle:bcpkix-jdk14,
                   org.bouncycastle:bcpkix-jdk13,
                   org.bouncycastle:bcpkix-jdk12,
-                  org.bouncycastle:bcpkix-jdk15to18
+                  org.bouncycastle:bcpkix-jdk15to18,
+                  org.bouncycastle:bcpkix-jdk15on
                 </features>
               </extensionOverride>
               <extensionOverride>
-                <id>org.bouncycastle:bcmail-jdk15on</id>
+                <id>org.bouncycastle:bcmail-jdk18on</id>
                 <features>
                   bouncycastle:bcmail-jdk16/140,
                   bouncycastle:bcmail-jdk15/140,
@@ -1123,7 +1202,8 @@
                   org.bouncycastle:bcmail-jdk14,
                   org.bouncycastle:bcmail-jdk13,
                   org.bouncycastle:bcmail-jdk12,
-                  org.bouncycastle:bcmail-jdk15to18
+                  org.bouncycastle:bcmail-jdk15to18,
+                  org.bouncycastle:bcmail-jdk15on
                 </features>
               </extensionOverride>
               <extensionOverride>
@@ -1132,7 +1212,10 @@
               </extensionOverride>
               <extensionOverride>
                 <id>org.jdom:jdom</id>
-                <features>jdom:jdom</features>
+                <features>
+                  jdom:jdom,
+                  org.jdom:jdom-legacy
+                </features>
               </extensionOverride>
               <extensionOverride>
                 <id>com.sun.mail:jakarta.mail</id>
@@ -1202,6 +1285,10 @@
                 <id>jakarta.validation:jakarta.validation-api</id>
                 <features>javax.validation:validation-api</features>
               </extensionOverride>
+              <extensionOverride>
+                <id>com.google.javascript:closure-compiler-unshaded</id>
+                <features>com.google.javascript:closure-compiler</features>
+              </extensionOverride>
             </extensionOverrides>
           </configuration>
         </plugin>
@@ -1238,7 +1325,7 @@
             </goals>
             <configuration>
               <rules>
-                <validateDependencyVersion implementation="org.xwiki.tool.enforcer.ValidateDependencyVersion">
+                <validateDependencyVersion>
                   <versionCheck>
                     <groupIdPrefix>org.xwiki.commons</groupIdPrefix>
                     <allowedVersionRegex>\$\{commons.version\}</allowedVersionRegex>
@@ -1272,6 +1359,155 @@
                   </message>
                   <excludes>
                     <exclude>org.apache.tika:tika-parsers</exclude>
+                  </excludes>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+          <!-- Make sure the old ckeditor contrib extension is not used. -->
+          <execution>
+            <id>enforce-ckeditor-platform</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <bannedDependencies>
+                  <searchTransitive>true</searchTransitive>
+                  <message>
+                    Do not use the CKEditor extension from contrib. Is it now packaged in xwiki platform.
+                  </message>
+                  <excludes>
+                    <exclude>org.xwiki.contrib:application-ckeditor*</exclude>
+                  </excludes>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+          <!-- Make sure JAR extensions don't trigger runtime dependencies on XAR extensions -->
+          <execution>
+            <id>enforcer-banneddependencytype-xar</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <skip>${xwiki.enforcer.banneddependencytype-xar.skip}</skip>
+              <rules>
+                <!-- Forbid JAR extensions to have XAR runtime dependencies -->
+                <bannedDependencyType>
+                  <dependencyType>xar</dependencyType>
+                  <projectPackaging>jar|webjar</projectPackaging>
+                  <!-- Integration test modules are never going to be installed as extension and they need to depend on XAR modules -->
+                  <projectArtifactId>^((?!-test-docker|.*-test-tests).)*$</projectArtifactId>
+                </bannedDependencyType>
+              </rules>
+            </configuration>
+          </execution>
+          <!-- Make sure the right id is used for MySQL connector -->
+          <execution>
+            <id>enforcer-mysql-connector-id</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <skip>${xwiki.enforcer.mysql-connector-id.skip}</skip>
+              <rules>
+                <bannedDependencies>
+                  <searchTransitive>true</searchTransitive>
+                  <message>
+                    The right id for the MySQL connector is com.mysql:mysql-connector-j.
+                  </message>
+                  <excludes>
+                    <exclude>mysql:mysql-connector-java</exclude>
+                  </excludes>
+                </bannedDependencies>
+              </rules>
+            </configuration>
+          </execution>
+          <!-- Make sure we don't use old platform dependencies -->
+          <execution>
+            <id>enforce-no-old-xwiki-platform</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <skip>${xwiki.enforcer.enforce-no-old-xwiki-platform.skip}</skip>
+              <rules>
+                <bannedDependencies>
+                  <searchTransitive>true</searchTransitive>
+                  <message>These dependencies don't exist anymore</message>
+                  <excludes>
+                    <exclude>org.xwiki.platform:xwiki-platform-cache-api</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-cache-infinispan</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-classloader-api</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-extension-repository-xwiki-handler</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-extension-repository-aether</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-extension-repository-xwiki-api</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-extension-repository-xwiki-model</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-administration</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-appwithinminutes</exclude>
+                    <exclude>org.xwiki.contrib:application-ckeditor-base</exclude>
+                    <exclude>org.xwiki.contrib:application-ckeditor-plugins</exclude>
+                    <exclude>org.xwiki.contrib:application-ckeditor-ui</exclude>
+                    <exclude>org.xwiki.contrib:application-ckeditor-webjar</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-eventstream</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-flamingo-bootswatchthemes</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-flamingo-theme</exclude>
+                    <exclude>org.xwiki.contrib:application-help-center</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-font-awesome</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-image-api</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-image-plugin</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-invitation</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-eventstream-store</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-eventstream-store-hibernate</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-activitystream-ui</exclude>
+                    <exclude>com.xpn.xwiki.platform:xwiki-core</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-less-css-api</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-less-css-default</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-less-css-script</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-livetable</exclude>
+                    <exclude>flaviusolaru:navigation-menu-wiki-macro</exclude>
+                    <exclude>lucaa:navigationmenuconfigapplication</exclude>
+                    <exclude>xwiki-platform-messagestream</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-model</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-filter-instance-oldcore</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-panels</exclude>
+                    <exclude>org.xwiki.contrib.ratings:application-ratings-api</exclude>
+                    <exclude>org.xwiki.contrib:xwiki-ratings-application</exclude>
+                    <exclude>org.xwiki.contrib.ratings:application-ratings-ui</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-extension-repository-xwiki-server-api</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-extension-repository-xwiki-server-ui</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-resource</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-search-solr-plugin</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-security-bridge</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-security-script</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-statistics</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-store-filesystem-attachments</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-url-standard</exclude>
+                    <exclude>org.xwiki.contrib.membership:application-membership-api</exclude>
+                    <exclude>org.xwiki.contrib.membership:application-membership-default</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-user-ui</exclude>
+                    <exclude>org.xwiki.contrib.membership:application-membership-profile</exclude>
+                    <exclude>org.xwiki.contrib.membership:application-membership-script</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-webjars</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-workspace-ui</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-wiki-manager-ui</exclude>
+                    <exclude>com.xpn.xwiki.platform.applications:xwiki-plugin-wiki-manager</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-workspace-template-features</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-xar</exclude>
+                    <exclude>org.xwiki.enterprise:xwiki-enterprise-ui-common</exclude>
+                    <exclude>com.xpn.xwiki.products:xwiki-enterprise-wiki</exclude>
+                    <exclude>org.xwiki.platform:xwiki-enterprise-wiki</exclude>
+                    <exclude>org.xwiki.platform:xwiki-enterprise-ui</exclude>
+                    <exclude>org.xwiki.platform:xwiki-enterprise-ui-all</exclude>
+                    <exclude>org.xwiki.enterprise:xwiki-enterprise-ui-mainwiki</exclude>
+                    <exclude>com.xpn.xwiki.products:xwiki-enterprise-manager-wiki-administrator</exclude>
+                    <exclude>org.xwiki.manager:xwiki-enterprise-manager-wiki-administrator</exclude>
+                    <exclude>org.xwiki.manager:xwiki-manager-wiki-administrator</exclude>
+                    <exclude>org.xwiki.manager:xwiki-manager-ui</exclude>
+                    <exclude>org.xwiki.enterprise:xwiki-enterprise-ui-tour</exclude>
+                    <exclude>org.xwiki.enterprise:xwiki-enterprise-ui-wiki</exclude>
+                    <exclude>org.xwiki.platform:xwiki-platform-distribution-flavor</exclude>
                   </excludes>
                 </bannedDependencies>
               </rules>

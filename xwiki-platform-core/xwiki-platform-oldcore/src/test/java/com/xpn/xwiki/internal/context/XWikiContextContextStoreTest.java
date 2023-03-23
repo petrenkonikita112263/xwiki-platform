@@ -25,13 +25,18 @@ import java.net.URL;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+
+import javax.servlet.http.Cookie;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.xwiki.component.manager.ComponentLookupException;
 import org.xwiki.container.Container;
 import org.xwiki.model.reference.DocumentReference;
+import org.xwiki.rendering.internal.transformation.RenderingContextStore;
 import org.xwiki.test.annotation.ComponentList;
 import org.xwiki.test.junit5.mockito.InjectMockComponents;
 import org.xwiki.test.junit5.mockito.MockComponent;
@@ -48,6 +53,7 @@ import com.xpn.xwiki.user.api.XWikiRightService;
 import com.xpn.xwiki.web.XWikiRequest;
 import com.xpn.xwiki.web.XWikiServletRequestStub;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -129,21 +135,30 @@ class XWikiContextContextStoreTest
         assertEquals(WIKI, contextStore.get(XWikiContextContextStore.PROP_WIKI));
     }
 
+    @SuppressWarnings("unchecked")
     @Test
-    void saveRequest()
+    void saveAndRestoreRequest() throws Exception
     {
         Map<String, String[]> parameters = new HashMap<>();
         parameters.put("param1", new String[] {"value1", "value2"});
-        XWikiServletRequestStub request = new XWikiServletRequestStub(this.wikiURL, parameters);
+        Cookie[] cookies = new Cookie[] {new Cookie("color", "red")};
+        Map<String, List<String>> headers = new LinkedHashMap<>();
+        headers.put("User-Agent", Collections.singletonList("test"));
+        headers.put("X-Color", Arrays.asList("blue", "green"));
+        XWikiServletRequestStub request = new XWikiServletRequestStub.Builder().setRequestURL(this.wikiURL)
+            .setContextPath("/test").setRequestParameters(parameters).setCookies(cookies).setHeaders(headers)
+            .setRemoteAddr("172.12.0.2").build();
         this.oldcore.getXWikiContext().setRequest(request);
 
         Map<String, Serializable> contextStore = new HashMap<>();
 
+        // Save
+
         this.store.save(contextStore, Arrays.asList(XWikiContextContextStore.PREFIX_PROP_REQUEST));
 
-        assertEquals(3, contextStore.size());
+        assertEquals(6, contextStore.size());
         assertEquals(this.wikiURL.toString(), contextStore.get(XWikiContextContextStore.PROP_REQUEST_URL).toString());
-        assertEquals(null, contextStore.get(XWikiContextContextStore.PROP_REQUEST_CONTEXTPATH));
+        assertEquals("/test", contextStore.get(XWikiContextContextStore.PROP_REQUEST_CONTEXTPATH));
 
         Map<String, String[]> storedParameters =
             (Map<String, String[]>) contextStore.get(XWikiContextContextStore.PROP_REQUEST_PARAMETERS);
@@ -151,6 +166,34 @@ class XWikiContextContextStoreTest
         Map.Entry<String, String[]> entry = storedParameters.entrySet().iterator().next();
         assertEquals("param1", entry.getKey());
         assertEquals(Arrays.asList(parameters.get("param1")), Arrays.asList(entry.getValue()));
+
+        Cookie[] storedCookies = (Cookie[]) contextStore.get(XWikiContextContextStore.PROP_REQUEST_COOKIES);
+        assertEquals(1, storedCookies.length);
+        assertEquals(cookies[0].getName(), storedCookies[0].getName());
+        assertEquals(cookies[0].getValue(), storedCookies[0].getValue());
+
+        assertEquals(headers, contextStore.get(XWikiContextContextStore.PROP_REQUEST_HEADERS));
+        assertEquals("172.12.0.2", contextStore.get(XWikiContextContextStore.PROP_REQUEST_REMOTE_ADDR));
+
+        // Restore
+
+        this.oldcore.getXWikiContext().setURL(null);
+        this.oldcore.getXWikiContext().setRequest(null);
+
+        this.store.restore(contextStore);
+
+        assertEquals(this.wikiURL, this.oldcore.getXWikiContext().getURL());
+
+        request = (XWikiServletRequestStub) this.oldcore.getXWikiContext().getRequest();
+        assertEquals(this.wikiURL.toString(), request.getRequestURL().toString());
+        assertEquals("/test", request.getContextPath());
+        assertArrayEquals(parameters.get("param1"), request.getParameterValues("param1"));
+        assertEquals(Arrays.asList("User-Agent", "X-Color"), Collections.list(request.getHeaderNames()));
+        assertEquals("test", request.getHeader("uSEr-AgenT"));
+        assertEquals(Arrays.asList("blue", "green"), Collections.list(request.getHeaders("x-cOLor")));
+        assertEquals("red", request.getCookie("color").getValue());
+        assertEquals(1, request.getCookies().length);
+        assertEquals("172.12.0.2", request.getRemoteAddr());
     }
 
     @Test
@@ -181,8 +224,8 @@ class XWikiContextContextStoreTest
     @Test
     void restoreEmpty() throws MalformedURLException
     {
-        XWikiServletRequestStub request = new XWikiServletRequestStub(new URL("http://stub"),
-            Collections.singletonMap("parameter", new String[] {"value"}));
+        XWikiServletRequestStub request = new XWikiServletRequestStub.Builder().setRequestURL(new URL("http://stub"))
+            .setRequestParameters(Collections.singletonMap("parameter", new String[] {"value"})).build();
 
         this.oldcore.getXWikiContext().setRequest(request);
 
@@ -242,7 +285,7 @@ class XWikiContextContextStoreTest
 
         this.store.restore(contextStore);
 
-        assertEquals(this.oldcore.getXWikiContext().getUserReference(), authorReference);
+        assertEquals(authorReference, this.oldcore.getXWikiContext().getUserReference());
 
         XWikiDocument secureDocument1 = (XWikiDocument) this.oldcore.getXWikiContext().get(XWikiDocument.CKEY_SDOC);
         assertNotNull(secureDocument1);
@@ -252,7 +295,7 @@ class XWikiContextContextStoreTest
 
         this.store.restore(contextStore);
 
-        assertEquals(this.oldcore.getXWikiContext().getUserReference(), authorReference);
+        assertEquals(authorReference, this.oldcore.getXWikiContext().getUserReference());
 
         XWikiDocument secureDocument2 = (XWikiDocument) this.oldcore.getXWikiContext().get(XWikiDocument.CKEY_SDOC);
         assertNotNull(secureDocument2);
@@ -267,7 +310,7 @@ class XWikiContextContextStoreTest
 
         this.store.restore(contextStore);
 
-        assertEquals(this.oldcore.getXWikiContext().getUserReference(), authorReference);
+        assertEquals(authorReference, this.oldcore.getXWikiContext().getUserReference());
 
         XWikiDocument secureDocument3 = (XWikiDocument) this.oldcore.getXWikiContext().get(XWikiDocument.CKEY_SDOC);
         assertNotNull(secureDocument3);
@@ -276,5 +319,11 @@ class XWikiContextContextStoreTest
         assertEquals(authorReference, this.oldcore.getXWikiContext().getAuthorReference());
         assertNotSame(this.oldcore.getSpyXWiki().getDocument(secureDocumentReference, this.oldcore.getXWikiContext()),
             secureDocument3);
+
+        contextStore.put(RenderingContextStore.PROP_RESTRICTED, true);
+
+        this.store.restore(contextStore);
+
+        assertNull(this.oldcore.getXWikiContext().getUserReference());
     }
 }

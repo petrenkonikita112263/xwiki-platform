@@ -23,6 +23,7 @@ package org.xwiki.security.authorization;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.List;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -38,6 +39,7 @@ import org.xwiki.model.internal.reference.DefaultEntityReferenceProvider;
 import org.xwiki.model.internal.reference.DefaultStringEntityReferenceResolver;
 import org.xwiki.model.internal.reference.DefaultStringEntityReferenceSerializer;
 import org.xwiki.model.internal.reference.DefaultSymbolScheme;
+import org.xwiki.model.internal.reference.EntityReferenceFactory;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.EntityReference;
 import org.xwiki.model.reference.WikiReference;
@@ -105,17 +107,18 @@ import static org.xwiki.security.authorization.Right.values;
  * @since 5.0M2
  */
 @ComponentTest
-@ComponentList({ DefaultSecurityCache.class, DefaultStringEntityReferenceResolver.class,
+@ComponentList({DefaultSecurityCache.class, DefaultStringEntityReferenceResolver.class,
     DefaultStringEntityReferenceSerializer.class, DefaultEntityReferenceProvider.class, DefaultModelConfiguration.class,
     AuthorizationManagerConfiguration.class, DefaultSecurityReferenceFactory.class, DefaultSecurityCacheLoader.class,
-    DefaultAuthorizationSettler.class, DefaultAuthorizationManager.class, DefaultSymbolScheme.class })
+    DefaultAuthorizationSettler.class, DefaultAuthorizationManager.class, DefaultSymbolScheme.class,
+    EntityReferenceFactory.class})
 class DefaultAuthorizationManagerIntegrationTest extends AbstractAuthorizationTestCase
 {
     @InjectMockComponents
     private DefaultAuthorizationManager authorizationManager;
 
     @RegisterExtension
-    LogCaptureExtension logCapture = new LogCaptureExtension(LogLevel.WARN);
+    private LogCaptureExtension logCapture = new LogCaptureExtension(LogLevel.WARN);
 
     /** Mocked xWikiBridge */
     @MockComponent
@@ -692,6 +695,9 @@ class DefaultAuthorizationManagerIntegrationTest extends AbstractAuthorizationTe
             getXDoc("docAllowGroupB", "any space"));
         assertAccess(ALL_RIGHTS_EXCEPT_ADMIN_AND_CREATE_WIKI, getXUser("userB"),
             getXDoc("docAllowGroupB", "any space"));
+
+        assertAccess(new RightSet(List.of(LOGIN, REGISTER, VIEW, DELETE)), getXUser("userA") ,
+            getXDoc("docDeleteAllowA", "any space"));
     }
 
     @Test
@@ -810,7 +816,7 @@ class DefaultAuthorizationManagerIntegrationTest extends AbstractAuthorizationTe
             nullValue());
     }
 
-    private class CustomRightDescription implements RightDescription
+    private final class CustomRightDescription implements RightDescription
     {
         @Override
         public String getName()

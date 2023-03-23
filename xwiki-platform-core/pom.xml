@@ -23,7 +23,7 @@
   <parent>
     <groupId>org.xwiki.platform</groupId>
     <artifactId>xwiki-platform</artifactId>
-    <version>14.4-SNAPSHOT</version>
+    <version>15.3-SNAPSHOT</version>
   </parent>
   <artifactId>xwiki-platform-core</artifactId>
   <name>XWiki Platform - Core - Parent POM</name>
@@ -124,31 +124,37 @@
             </revapi.differences>
 
                  Single justification example:
-
+            -->
             <revapi.differences>
+              <justification>Change needed to provide a merge operation taking into account the configuration: we cannot provide a default method as it would wrongly give the feeling that the operation succeeded. We consider this breaking change acceptable since it's unlikely anyone directly implements this interface.</justification>
+              <criticality>highlight</criticality>
               <differences>
                 <item>
-                  <code>java.method.removed</code>
-                  <old>method void org.xwiki.diff.xml.XMLDiff::xxx()</old>
-                  <justification>Unstable API added by mistake.</justification>
-                  <criticality>highlight</criticality>
+                  <ignore>true</ignore>
+                  <code>java.method.addedToInterface</code>
+                  <new>method org.xwiki.store.merge.MergeManagerResult&lt;com.xpn.xwiki.objects.ElementInterface, java.lang.Object&gt; com.xpn.xwiki.objects.ElementInterface::merge(com.xpn.xwiki.objects.ElementInterface, com.xpn.xwiki.objects.ElementInterface, com.xpn.xwiki.doc.merge.MergeConfiguration, com.xpn.xwiki.XWikiContext)</new>
                 </item>
               </differences>
             </revapi.differences>
-            -->
-            <!-- Difference related to the Security refactoring. Start a new <revapi.differences> entry for other
-                 differences -->
-
-            
-            
+            <revapi.differences>
+              <differences>
+                <item>
+                  <ignore>true</ignore>
+                  <code>java.method.addedToInterface</code>
+                  <new>method int java.lang.Comparable&lt;T&gt;::compareTo(T) @ org.xwiki.whatsnew.NewsSourceItem</new>
+                  <justification>Young API</justification>
+                  <criticality>documented</criticality>
+                </item>
+              </differences>
+            </revapi.differences>
           </analysisConfiguration>
         </configuration>
       </plugin>
     </plugins>
   </build>
   <modules>
-      <!-- Sorted Alphabetically -->
-    <module>xwiki-platform-activeinstalls</module>
+    <!-- Sorted Alphabetically -->
+    <module>xwiki-platform-activeinstalls2</module>
     <module>xwiki-platform-administration</module>
     <module>xwiki-platform-alerts</module>
     <module>xwiki-platform-annotation</module>
@@ -159,6 +165,7 @@
     <module>xwiki-platform-bridge</module>
     <module>xwiki-platform-captcha</module>
     <module>xwiki-platform-chart</module>
+    <module>xwiki-platform-ckeditor</module>
     <module>xwiki-platform-classloader</module>
     <module>xwiki-platform-component</module>
     <module>xwiki-platform-configuration</module>
@@ -178,7 +185,6 @@
     <module>xwiki-platform-filter</module>
     <module>xwiki-platform-flamingo</module>
     <module>xwiki-platform-flavor</module>
-    <module>xwiki-platform-formula</module>
     <module>xwiki-platform-graphviz</module>
     <module>xwiki-platform-groovy</module>
     <module>xwiki-platform-help</module>
@@ -191,6 +197,7 @@
     <module>xwiki-platform-jodatime</module>
     <module>xwiki-platform-lesscss</module>
     <module>xwiki-platform-like</module>
+    <module>xwiki-platform-link</module>
     <module>xwiki-platform-linkchecker</module>
     <module>xwiki-platform-livedata</module>
     <module>xwiki-platform-livetable</module>
@@ -238,6 +245,7 @@
     <module>xwiki-platform-url</module>
     <module>xwiki-platform-velocity</module>
     <module>xwiki-platform-vfs</module>
+    <module>xwiki-platform-whatsnew</module>
     <module>xwiki-platform-web</module>
     <module>xwiki-platform-webjars</module>
     <module>xwiki-platform-websocket</module>

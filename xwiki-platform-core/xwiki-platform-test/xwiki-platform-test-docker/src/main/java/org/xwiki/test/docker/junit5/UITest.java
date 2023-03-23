@@ -27,6 +27,7 @@ import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.xwiki.test.docker.internal.junit5.TestLocalReferenceParameterResolver;
 import org.xwiki.test.docker.internal.junit5.TestReferenceParameterResolver;
 import org.xwiki.test.docker.internal.junit5.XWikiDockerExtension;
 import org.xwiki.test.docker.junit5.browser.Browser;
@@ -51,6 +52,7 @@ import static java.lang.annotation.RetentionPolicy.RUNTIME;
 @ExtendWith(ValidateConsoleExtension.class)
 @ExtendWith(XWikiDockerExtension.class)
 @ExtendWith(TestReferenceParameterResolver.class)
+@ExtendWith(TestLocalReferenceParameterResolver.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public @interface UITest
@@ -83,13 +85,6 @@ public @interface UITest
      * @since 10.11RC1
      */
     boolean debug() default false;
-
-    /**
-     * @return true if the database data should be mapped to a local directory on the host computer so that it can be
-     * saved and reused for another run
-     * @since 10.10RC1
-     */
-    boolean saveDatabaseData() default false;
 
     /**
      * @return true if the Maven resolving is done in offline mode (i.e. you need to have the required artifacts in your
@@ -125,6 +120,11 @@ public @interface UITest
     boolean vnc() default true;
 
     /**
+     * @return true if WCAG tests should be executed, false otherwise
+     */
+    boolean wcag() default false;
+
+    /**
      * @return the list of configuration properties to use when generating the XWiki configuration files such as
      *         {@code xwiki.properties} with Velocity (check {@code xwiki.properties.vm} to find the list of supported
      *         properties)
@@ -148,12 +148,11 @@ public @interface UITest
 
     /**
      * @return true if the specified extra JAR versions must be resolved (when they're not specified), by checking the
-     *         transitive list of dependencies in the current POM. Note that there are 2 limitations: resolving takes
-     *         time and SNAPSHOT versions will be resolved to the latest published SNAPSHOT. This is why it's off by
-     *         default. When false the current POM version will be used for the missing exyta JAR versions. The main
-     *         use case for using true is in contrib extensions where the current POM version usually don't match
-     *         extra JARs versions and you may not want to hardcode the version and thus you can let the docker test
-     *         framework find it for you.
+     *     transitive list of dependencies in the current POM. Note that there are 2 limitations: resolving takes time
+     *     and SNAPSHOT versions will be resolved to the latest published SNAPSHOT. This is why it's off by default.
+     *     When false the current POM version will be used for the missing extra JAR versions. The main use case for
+     *     using true is in contrib extensions where the current POM version usually don't match extra JARs versions and
+     *     you may not want to hardcode the version and thus you can let the docker test framework find it for you.
      * @since 12.5RC1
      */
     boolean resolveExtraJARs() default false;
@@ -195,4 +194,19 @@ public @interface UITest
      * @since 11.2RC1
      */
     String[] databaseCommands() default {};
+
+    /**
+     * @return true if the database data should be mapped to a local directory on the host computer so that it can be
+     *         saved and reused for another run
+     * @since 10.10RC1
+     */
+    boolean saveDatabaseData() default false;
+
+    /**
+     * @return true if the XWiki permanent directory should be preserved after the test is finished and the XWiki
+     *         container stopped (doesn't make sense for Servlet containers running outside of Docker). Can be useful
+     *         for debugging purposes
+     * @since 14.5
+     */
+    boolean savePermanentDirectoryData() default false;
 }

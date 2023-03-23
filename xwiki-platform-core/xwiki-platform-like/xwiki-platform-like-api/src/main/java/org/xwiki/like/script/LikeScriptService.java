@@ -39,7 +39,6 @@ import org.xwiki.model.reference.EntityReference;
 import org.xwiki.script.service.ScriptService;
 import org.xwiki.security.authorization.AuthorizationManager;
 import org.xwiki.security.authorization.Right;
-import org.xwiki.stability.Unstable;
 import org.xwiki.user.UserReference;
 import org.xwiki.user.UserReferenceResolver;
 
@@ -112,7 +111,6 @@ public class LikeScriptService implements ScriptService
      * @return {@code true} if the Like feature is enabled.
      * @since 13.1RC1
      */
-    @Unstable
     public boolean isEnabled()
     {
         return this.likeConfiguration.isEnabled();

@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.xwiki.platform</groupId>
     <artifactId>xwiki-platform-administration</artifactId>
-    <version>14.4-SNAPSHOT</version>
+    <version>15.3-SNAPSHOT</version>
   </parent>
   <artifactId>xwiki-platform-administration-ui</artifactId>
   <name>XWiki Platform - Administration - UI</name>
@@ -70,7 +70,7 @@
       <version>${rendering.version}</version>
       <scope>runtime</scope>
     </dependency>
-    <!-- Currently needed only by the Google Analytics Admin screen -->
+    <!-- Required to use the error/warning/info macros. -->
     <dependency>
       <groupId>org.xwiki.rendering</groupId>
       <artifactId>xwiki-rendering-macro-message</artifactId>
@@ -90,6 +90,19 @@
       <groupId>org.webjars</groupId>
       <artifactId>bootstrap-select</artifactId>
       <scope>runtime</scope>
+    </dependency>
+    <!-- Test dependencies. -->
+    <dependency>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-test-page</artifactId>
+      <version>${project.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.xwiki.commons</groupId>
+      <artifactId>xwiki-commons-script</artifactId>
+      <version>${commons.version}</version>
+      <scope>test</scope>
     </dependency>
   </dependencies>
   <build>

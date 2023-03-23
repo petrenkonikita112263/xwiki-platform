@@ -25,15 +25,12 @@
   <parent>
     <groupId>org.xwiki.platform</groupId>
     <artifactId>xwiki-platform-test</artifactId>
-    <version>14.4-SNAPSHOT</version>
+    <version>15.3-SNAPSHOT</version>
   </parent>
   <artifactId>xwiki-platform-test-ui</artifactId>
   <name>XWiki Platform - Test - UI Tests Framework</name>
   <packaging>jar</packaging>
   <description>XWiki Platform - UI Tests Framework</description>
-  <properties>
-    <selenium.version>4.1.4</selenium.version>
-  </properties>
   <dependencies>
     <dependency>
       <groupId>org.xwiki.commons</groupId>
@@ -53,30 +50,32 @@
       <groupId>org.seleniumhq.selenium</groupId>
       <artifactId>selenium-java</artifactId>
       <version>${selenium.version}</version>
-      <exclusions>
-        <!-- We want to choose the SLF4J binding only when XWiki is packaged. -->
-        <exclusion>
-          <groupId>commons-logging</groupId>
-          <artifactId>commons-logging</artifactId>
-        </exclusion>
-        <!-- It has a dependency on testng which we need to exclude to prevent
-             Maven Surefire plugin to think we're executing TestNG tests. -->
-        <exclusion>
-          <groupId>org.testng</groupId>
-          <artifactId>testng</artifactId>
-        </exclusion>
-      </exclusions>
+    </dependency>
+    <!-- Use Java 11+'s bundled HTTP Client instead of AsyncHttpClient.
+         See https://github.com/SeleniumHQ/selenium/issues/9528#issuecomment-1282482248 and
+         https://www.selenium.dev/blog/2022/using-java11-httpclient/
+         To be removed once https://github.com/SeleniumHQ/selenium/issues/9528 is fixed -->
+    <dependency>
+      <groupId>org.seleniumhq.selenium</groupId>
+      <artifactId>selenium-http-jdk-client</artifactId>
+      <version>${selenium.version}</version>
     </dependency>
     <!-- Used to download/install/setup the gecko driver for Selenium for the FF browser -->
     <dependency>
       <groupId>io.github.bonigarcia</groupId>
       <artifactId>webdrivermanager</artifactId>
-      <version>5.1.1</version>
+      <version>5.3.1</version>
     </dependency>
     <!-- Used by the REST calls -->
     <dependency>
       <groupId>org.glassfish.jaxb</groupId>
       <artifactId>jaxb-runtime</artifactId>
+    </dependency>
+    <!-- Used by the wcag validation-->
+    <dependency>
+      <groupId>com.deque.html.axe-core</groupId>
+      <artifactId>selenium</artifactId>
+      <version>4.6.0</version>
     </dependency>
   </dependencies>
   <build>

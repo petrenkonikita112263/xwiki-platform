@@ -27,7 +27,6 @@ import org.xwiki.component.annotation.Role;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.WikiReference;
 import org.xwiki.notifications.NotificationException;
-import org.xwiki.stability.Unstable;
 
 /**
  * Provide {@link NotificationFilterPreference} from multiple sources.
@@ -55,7 +54,6 @@ public interface NotificationFilterPreferenceProvider
      * @throws NotificationException if an error happened
      * @since 13.3RC1
      */
-    @Unstable
     default Set<NotificationFilterPreference> getFilterPreferences(WikiReference wikiReference)
         throws NotificationException
     {
@@ -96,7 +94,6 @@ public interface NotificationFilterPreferenceProvider
      *
      * @since 13.3RC1
      */
-    @Unstable
     default void deleteFilterPreference(WikiReference wikiReference, String filterPreferenceId)
         throws NotificationException
     {
@@ -126,7 +123,6 @@ public interface NotificationFilterPreferenceProvider
      *
      * @since 13.3RC1
      */
-    @Unstable
     default void setFilterPreferenceEnabled(WikiReference wikiReference, String filterPreferenceId, boolean enabled)
         throws NotificationException
     {

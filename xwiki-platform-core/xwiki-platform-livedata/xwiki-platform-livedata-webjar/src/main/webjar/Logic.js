@@ -105,6 +105,7 @@ define('xwiki-livedata', [
   const Logic = function (element) {
     this.element = element;
     this.data = JSON.parse(element.getAttribute("data-config") || "{}");
+    this.contentTrusted = element.getAttribute("data-config-content-trusted") === "true"; 
     this.data.entries = Object.freeze(this.data.entries);
 
     // Reactive properties must be initialized before Vue is instantiated.
@@ -118,6 +119,7 @@ define('xwiki-livedata', [
     };
     this.openedPanels = [];
     this.footnotes = new FootnotesService();
+    this.panels = [];
 
     element.removeAttribute("data-config");
 
@@ -129,9 +131,13 @@ define('xwiki-livedata', [
       silentFallbackWarn: true,
     });
 
+    // Vue.js replaces the container - prevent this by creating a placeholder for Vue.js to replace.
+    const placeholderElement = document.createElement('div');
+    this.element.appendChild(placeholderElement);
+
     // create Vuejs instance
     const vue = new Vue({
-      el: this.element,
+      el: placeholderElement,
       components: {
         "XWikiLivedata": XWikiLivedata,
       },
@@ -140,6 +146,15 @@ define('xwiki-livedata', [
       data: {
         logic: this
       },
+      mounted()
+      {
+        element.classList.remove('loading');
+        // Trigger the "instanceCreated" event on the next tick to ensure that the constructor has returned and thus
+        // all references to the logic instance have been initialized.
+        this.$nextTick(function () {
+          this.logic.triggerEvent('instanceCreated', {});
+        });
+      }
     });
 
     // Fetch the data if we don't have any. This call must be made just after the main Vue component is initialized as 
@@ -247,6 +262,34 @@ define('xwiki-livedata', [
     this.translationsLoaded = async() => {
       await translationsPromise;
     }
+
+    // Registers panels once the translations have been loadded as they are otherwise hard to update.
+    this.translationsLoaded().finally(() => {
+      this.registerPanel({
+        id: 'propertiesPanel',
+        title: vue.$t('livedata.panel.properties.title'),
+        name: vue.$t('livedata.dropdownMenu.panels.properties'),
+        icon: 'list-bullets',
+        component: 'LivedataAdvancedPanelProperties',
+        order: 1000
+      });
+      this.registerPanel({
+        id: 'sortPanel',
+        title: vue.$t('livedata.panel.sort.title'),
+        name: vue.$t('livedata.dropdownMenu.panels.sort'),
+        icon: 'table_sort',
+        component: 'LivedataAdvancedPanelSort',
+        order: 2000
+      });
+      this.registerPanel({
+        id: 'filterPanel',
+        title: vue.$t('livedata.panel.filter.title'),
+        name: vue.$t('livedata.dropdownMenu.panels.filter'),
+        icon: 'filter',
+        component: 'LivedataAdvancedPanelFilter',
+        order: 3000
+      });
+    });
   };
 
 
@@ -541,6 +584,7 @@ define('xwiki-livedata', [
       return this.fetchEntries()
         .then(data => {
           this.data.data = Object.freeze(data);
+          Vue.nextTick(() => this.triggerEvent('entriesUpdated', {}));
           // Remove the outdated footnotes, they will be recomputed by the new entries.
           this.footnotes.reset()
         })
@@ -1451,6 +1495,43 @@ define('xwiki-livedata', [
 
     getEditBus() {
       return editBus;
+    },
+
+    /**
+     * Registers a panel.
+     *
+     * The panel must have the following attributes:
+     * * id: the id of the panel, must be unique among all panels, also used as suffix of the class on the panel
+     * * name: the name that shall be shown in the menu
+     * * title: the title that shall be displayed in the title bar of the panel
+     * * icon: the name of the icon for the menu and the title of the panel
+     * * container: the Element that shall be attached to the extension panel's body, this should contain the main UI
+     * * component: the component of the panel, should be "LiveDataAdvancedPanelExtension" for extension panels
+     * * order: the ordering number, panels are sorted by this number in ascending order
+     *
+     * @param {Object} panel the panel to add
+     */
+    registerPanel(panel)
+    {
+      // Basic insertion sorting to avoid shuffling the (reactive) array.
+      const index = this.panels.findIndex(p => p.order > panel.order);
+      if (index === -1) {
+        this.panels.push(panel);
+      } else {
+        this.panels.splice(index, 0, panel);
+      }
+    },
+
+    //
+    // Content status
+    //
+
+    /**
+     * @returns {boolean} when false, the content is not trusted will be sanitized whenever Vue integrated escaping
+     * is not enough. When true, the content is never sanitized
+     */
+    isContentTrusted() {
+      return this.contentTrusted;
     }
   };
 

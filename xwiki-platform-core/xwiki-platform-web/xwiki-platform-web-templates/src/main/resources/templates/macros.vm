@@ -36,7 +36,7 @@
 ## - as a file in the /templates/ directory
 ##
 #macro(template $tname)
-$xwiki.parseTemplate($tname)
+$services.template.render($tname)
 #end
 ##
 ##
@@ -1434,7 +1434,7 @@ $Msz MB##
   #end
   <table id="${htmlLiveTableId}" class="xwiki-livetable"
       #if("$!options.description" != '') summary="$escapetool.xml($options.description)"#end
-      data-settings="$escapetool.xml($jsontool.serialize($macro.settings))">
+      data-settings="$escapetool.xml($jsontool.serialize($macro.settings))" data-xwiki-lightbox="false">
     <tr>
       <td class="xwiki-livetable-pagination">
         <span id="${htmlLiveTableId}-limits" class="xwiki-livetable-limits"></span>
@@ -1471,12 +1471,12 @@ $Msz MB##
               #set($displayName = "#getLivetableColumnDisplayName($colname, $colprop, $transprefix)")
               #set ($defaultHeaderClass = {'_actions': 'actions', '_avatar': 'avatar'})
               #set ($discard = $colprop.putIfAbsent('headerClass', $defaultHeaderClass.get($colname)))
-              <th scope="col" class="xwiki-livetable-display-header-text $!colprop.headerClass
+              <th scope="col" class="xwiki-livetable-display-header-text $!escapetool.xml($colprop.headerClass)
                   #if ($!colprop.type == 'hidden')hidden#end
                   #if ($isSortable)sortable #if ($colname == $selectedColumn)selected $defaultOrder#else asc#end#end">
-                #if($isSortable)<a rel="${colname}">#end
+                #if($isSortable)<a rel="${escapetool.xml($colname)}">#end
                 #if($isFilterable)<label for="xwiki-livetable-${htmlLiveTableId}-filter-${foreach.count}">#end
-                $displayName
+                $escapetool.xml($displayName)
                 #if($isFilterable)</label>#end
                 #if($isSortable)</a>#end
                 #set($columnCount = $mathtool.add($columnCount, 1))
@@ -1573,11 +1573,11 @@ $Msz MB##
   #set($escapedTitle = $escapetool.xml($services.localization.render('platform.livetable.filtersTitle',
     [$services.localization.render("${transprefix}$column")])))
   #if ($filterType == 'list' || $filterType == 'multilist')
-    <select id="xwiki-livetable-${htmlLiveTableId}-filter-${foreach.count}" name="$column"
+    <select id="xwiki-livetable-${htmlLiveTableId}-filter-${foreach.count}" name="$!escapetool.xml($column)"
       #if ($filterType == 'multilist')
         class="xwiki-livetable-multilist" multiple="multiple">
       #else
-        ><option value="">$services.localization.render('platform.livetable.selectAll')</option>
+        ><option value="">$escapetool.xml($services.localization.render('platform.livetable.selectAll'))</option>
         <option disabled="disabled">────</option>
       #end
     #set ($storedValues = $xproperty.listValues)
@@ -1588,25 +1588,24 @@ $Msz MB##
       #if ($displayedValue == $l10nKey)
         #set ($displayedValue = $displayedValues.get($storedValue).value)
       #end
-      <option value="$storedValue">$displayedValue</option>
+      <option value="$!escapetool.xml($storedValue)">$!escapetool.xml($displayedValue)</option>
     #end
     </select>
   #elseif ($filterType == 'boolean')
-    <select id="xwiki-livetable-${htmlLiveTableId}-filter-${foreach.count}" name="$column">
+    <select id="xwiki-livetable-${htmlLiveTableId}-filter-${foreach.count}" name="$!escapetool.xml($column)">
       <option value="">$services.localization.render('platform.livetable.selectAll')</option>
       <option value="0">$services.localization.render('no')</option>
       <option value="1">$services.localization.render('yes')</option>
     </select>
   #elseif ($filterType == 'text' || $filterType == 'number')
-    <input id="xwiki-livetable-${htmlLiveTableId}-filter-${foreach.count}" name="$column" type="text"
+    <input id="xwiki-livetable-${htmlLiveTableId}-filter-${foreach.count}" name="$!escapetool.xml($column)" type="text"
       #if ("$!columnProperties.size" != '')size="$!escapetool.xml($columnProperties.size)"#end
       title="$escapedTitle"/>
   #elseif ($filterType == 'suggest' && $xproperty)
     #set ($discard = $xwiki.linkx.use($services.webjars.url('selectize.js', 'css/selectize.css'),
       {'type': 'text/css', 'rel': 'stylesheet'}))
     #set ($discard = $xwiki.ssfx.use('uicomponents/suggest/xwiki.selectize.css', true))
-    #set ($discard = $xwiki.jsfx.use('uicomponents/suggest/suggestPropertyValues.js',
-      {'forceSkinAction' : true, 'language' : $xcontext.locale}))
+    #set ($discard = $xwiki.jsfx.use('uicomponents/suggest/suggestPropertyValues.js'))
     <select id="xwiki-livetable-${htmlLiveTableId}-filter-${foreach.count}" name="$!escapetool.xml($column)"
       class="suggest-propertyValues" multiple="multiple" size="1"
       data-className="$!escapetool.xml($xproperty.className)" data-propertyName="$!escapetool.xml($xproperty.name)"
@@ -1722,6 +1721,10 @@ $displayName##
   ## When the total number of rows is not bigger than the limit, we remove the obfuscated results from the response since
   ## this has no impact on the pagination.
   #set ($rows = $map.get('rows'))
+  #set ($offset = 0)
+  #if($map.get('offset'))
+    #set ($offset = $mathtool.sub($map.get('offset'), 1))
+  #end
   #if ($map.get('totalrows') <= $map.get('returnedrows'))
     #set ($filteredRows = [])
     #foreach ($row in $rows)
@@ -1729,7 +1732,9 @@ $displayName##
         #set ($discard = $filteredRows.add($row))
       #end
     #end
-    #set($discard = $map.put('totalrows', $filteredRows.size()))
+    ## The offset needs to be taken into account when returning the total number of pages otherwise, client-side can
+    ## consider that previsouly returned results have been removed (e.g., in case of page size change).
+    #set($discard = $map.put('totalrows', $mathtool.add($filteredRows.size(), $offset)))
     #set($discard = $map.put('returnedrows', $filteredRows.size()))
   #else
     #set ($filteredRows = $rows)
@@ -2412,8 +2417,7 @@ $string##
  *#
 #macro (userPicker_import)
   #picker_import
-  #set ($discard = $xwiki.jsfx.use('uicomponents/suggest/suggestUsersAndGroups.js',
-    {'forceSkinAction': true, 'language': $xcontext.locale}))
+  #set ($discard = $xwiki.jsfx.use('uicomponents/suggest/suggestUsersAndGroups.js'))
 #end
 
 #macro (userPicker_input $multiSelect $parameters)
@@ -2460,8 +2464,7 @@ $string##
 *#
 #macro (attachmentPicker_import)
   #picker_import
-  #set ($discard = $xwiki.jsfx.use('uicomponents/suggest/suggestAttachments.js',
-    {'forceSkinAction': true, 'language': $xcontext.locale}))
+  #set ($discard = $xwiki.jsfx.use('uicomponents/suggest/suggestAttachments.js'))
   ## Pull the resources required by the configured icon set in order to display attachment icons.
   #set ($discard = $services.icon.use())
 #end
@@ -2604,13 +2607,22 @@ Recursive title display detected!##
 ###                 ])
 ### #xwikiSelect('nameOfTheField', $options, 'option1', false, 'xwiki-select-small', '', true)
 #########################################################
-#macro(xwikiSelect $fieldName $options $defaultValue $firstIsDefaultIfDefaultNull $cssClass $id $enableFilter $filterPlaceHolder)
+#macro(xwikiSelect $fieldName $options $defaultValue $firstIsDefaultIfDefaultNull $cssClass $id $enableFilter)
   ## TODO: put this in a webjar instead
   #set ($discard = $xwiki.ssfx.use('uicomponents/widgets/select/select.css', {'forceSkinAction': true}))
   #set ($discard = $xwiki.jsfx.use('uicomponents/widgets/select/select.js' , {'forceSkinAction': true}))
-  <div class="xwiki-select $!cssClass" #if("$!id" != '')id="$id"#end>
-    ## Here we let a place to add a filter in the future, that is why the options are inside the following div block.
-    <p><input type="text" class="xwiki-select-filter" placeholder="$escapetool.xml($services.localization.render('web.widgets.select.filter.placeholder'))"/></p>
+  #if ("$!id" == '')
+    #set ($id = "xwiki-select-$util.generateRandomString(3)")
+  #end
+  #set ($escapedId = $escapetool.xml($id))
+  <div class="xwiki-select $!escapetool.xml($cssClass)" id="$escapedId">
+    <p>
+      <label for="${escapedId}-filter" class="sr-only">
+        $escapetool.xml($services.localization.render('web.widgets.select.filter'))
+      </label>
+      <input type="text" id="${escapedId}-filter" class="xwiki-select-filter"
+        placeholder="$escapetool.xml($services.localization.render('web.widgets.select.filter.placeholder'))" />
+    </p>
     <div class="xwiki-select-options">
       <ul>
         #set ($count = 0)
@@ -2653,8 +2665,7 @@ Recursive title display detected!##
  * Used by custom property displayers that need a generic suggest input.
  *#
 #macro (xpropertySuggestInputDisplayer $field $prefix $name $value)
-  #set ($discard = $xwiki.jsfx.use('uicomponents/suggest/suggestPropertyValues.js',
-    {'forceSkinAction': true, 'language': $xcontext.locale}))
+  #set ($discard = $xwiki.jsfx.use('uicomponents/suggest/suggestPropertyValues.js'))
   #set ($id = "${prefix}${name}")
   #set ($freeText = $!field.getValue('freeText'))
   #set ($parameters = {
@@ -2966,4 +2977,58 @@ Recursive title display detected!##
       #set ($dateRange.end = $datetool.toDate($numbertool.toNumber($parts[1])))
     #end
   #end
+#end
+
+## The goal of this macro is to ensure to obtain a safe URL to inject in HTML, especially whenever the URL might come
+## from a parameter to avoid any XSS. This macro should not be used to check valid external links (e.g. link to an
+## external documentation page). Its main purpose is checking links in technical forms.
+## The macro performs two kinds of sanitation check:
+##   1. it checks if the html attribute value is safe according to HTMLElementSanitizer through the HtmlScriptService
+##   2. it checks if the given URL is safe according to the URLSecurityScriptService, which takes into account the
+##      trusted domains configuration in case of absolute URLs
+## and finally it returns an XML-escaped URL to be injected in HTML attribute.
+## Note that the macro performs checks both on the given URL value, but also on the fallback URL to avoid any security
+## issue.
+## The macro takes the following parameter:
+##    - $htmlElement: the name of the html element where the URL will be injected (e.g. 'a', 'input' or 'form')
+##    - $attributeName: the name of html attribute where the URL will be injected (e.g. 'href', 'value', or 'action')
+##    - $urlValue: the actual URL that should be injected (e.g. 'http://xwiki.org', '/xwiki/bin/view/Sandbox')
+##    - $fallbackUrl: the fallback URL that should be used if the $urlValue is not safe. This parameter can be empty
+##    - $resultValue: the velocity variable where to store the result. It will contain either an XML-escaped version of
+##                    $urlValue or of $fallbackUrl, or it will contain an empty value, if neither URLs are safe there
+## Note: We don't use any indentation on purpose to avoid any character to be inserted when calling this macro.
+##       The idea is to remain as close as possible to a call to #set() in velocity.
+## @since 14.10.5
+## @since 15.1RC1
+#macro (getSanitizedURLAttributeValue $htmlElement $attributeName $urlValue $fallbackUrl $resultValue)
+#set ($useSafeURI = false)
+#set ($safeURI = $services.security.url.parseToSafeURI($urlValue))
+#if ("$!safeURI" != '' && $services.html.isAttributeSafe($htmlElement,$attributeName,$safeURI.toString()))
+#set ($useSafeURI = true)
+#elseif ("$!fallbackUrl" != '')
+#set ($safeURI = $services.security.url.parseToSafeURI($fallbackUrl))
+#if ("$!safeURI" != '' && $services.html.isAttributeSafe($htmlElement,$attributeName,$safeURI.toString()))
+#set ($useSafeURI = true)
+#end
+#end
+#set ($resultValue = $NULL)
+#if ($useSafeURI)
+#setVariable("$resultValue" $!{escapetool.xml($safeURI.toString())})
+#else
+#setVariable("$resultValue" '')
+#end
+#end
+
+#**
+ * The output of the api.Document#display(...) methods is wrapped in an HTML (wiki syntax) rendering macro if it contains
+ * HTML special characters or if it tries to close the outer HTML macro. This can be annoying when the output is going to
+ * be insered in another HTML macro with wiki syntax disabled, or if the output is meant to be included in a JSON and
+ * thus used on the client-side where we can't render the wiki syntax. For these use cases we need to get rid of the HTML
+ * macro wrapping.
+ *
+ * @since 14.10.5
+ * @since 15.1RC1
+ *#
+#macro (unwrapXPropertyDisplay $displayOutput)
+$!stringtool.removeEnd($stringtool.removeStart($displayOutput, '{{html clean="false" wiki="false"}}'), '{{/html}}')##
 #end

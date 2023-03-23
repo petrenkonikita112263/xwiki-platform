@@ -33,6 +33,7 @@ import java.sql.Statement;
 import java.util.EnumSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.TimeZone;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
@@ -89,6 +90,7 @@ import org.xwiki.context.ExecutionContext;
 import org.xwiki.environment.Environment;
 import org.xwiki.logging.LoggerConfiguration;
 import org.xwiki.wiki.descriptor.WikiDescriptorManager;
+import org.xwiki.wiki.manager.WikiManagerException;
 
 import com.xpn.xwiki.XWikiException;
 import com.xpn.xwiki.internal.store.hibernate.legacy.LegacySessionImplementor;
@@ -586,7 +588,7 @@ public class HibernateStore implements Disposable, Integrator, Initializable
 
         return new StringBuilder(2000).append("<?xml version=\"1.1\" encoding=\"UTF-8\"?>\n")
             .append("<!DOCTYPE hibernate-mapping PUBLIC\n").append("\t\"-//Hibernate/Hibernate Mapping DTD//EN\"\n")
-            .append("\t\"http://hibernate.sourceforge.net/hibernate-mapping-3.0.dtd\">\n").append("<hibernate-mapping>")
+            .append("\t\"http://www.hibernate.org/dtd/hibernate-mapping-3.0.dtd\">\n").append("<hibernate-mapping>")
             .append("<class entity-name=\"").append(className).append("\" table=\"")
             .append(toDynamicMappingTableName(className)).append("\">\n")
             .append(" <id name=\"id\" type=\"long\" unsaved-value=\"any\">\n")
@@ -695,17 +697,17 @@ public class HibernateStore implements Disposable, Integrator, Initializable
                         }
                     });
                 }
-            }
 
-            getDataMigrationManager().checkDatabase();
+                session.setProperty("xwiki.database", databaseName);
+            }
         } catch (Exception e) {
             // close session with rollback to avoid further usage
             endTransaction(false);
 
             Object[] args = {wikiId};
             throw new XWikiException(XWikiException.MODULE_XWIKI_STORE,
-                XWikiException.ERROR_XWIKI_STORE_HIBERNATE_SWITCH_DATABASE, "Exception while switching to database {0}",
-                e, args);
+                XWikiException.ERROR_XWIKI_STORE_HIBERNATE_SWITCH_DATABASE, "Exception while switching to wiki {0}", e,
+                args);
         }
     }
 
@@ -804,11 +806,47 @@ public class HibernateStore implements Disposable, Integrator, Initializable
             return false;
         }
 
+        String contextWikiId = this.wikis.getCurrentWikiId();
+
         if (session != null) {
+            String sessionDatabase = (String) session.getProperties().get("xwiki.database");
+            String contextDatabase = getDatabaseFromWikiName(contextWikiId);
+
+            // The current context is trying to manipulate a database different from the one in the current session
+            if (!Objects.equals(sessionDatabase, contextDatabase)) {
+                Object[] args = {contextWikiId};
+                throw new XWikiException(XWikiException.MODULE_XWIKI_STORE,
+                    XWikiException.ERROR_XWIKI_STORE_HIBERNATE_SWITCH_DATABASE,
+                    "Cannot switch to database {0} in an existing session", null, args);
+            }
+
             this.logger.debug("Taking session from context [{}]", session);
             this.logger.debug("Taking transaction from context [{}]", transaction);
 
             return false;
+        }
+
+        // We should not try to access the schema/database which is not a registered wiki
+        try {
+            if (!this.wikis.isMainWiki(contextWikiId) && this.wikis.getById(contextWikiId) == null) {
+                throw new XWikiException(XWikiException.MODULE_XWIKI, XWikiException.ERROR_XWIKI_DOES_NOT_EXIST,
+                    "No wiki with id [" + contextWikiId + "] could be found");
+            }
+        } catch (WikiManagerException e) {
+            throw new XWikiException("Failed to load the wiki descriptor", e);
+        }
+
+        // Makes sure the database is initialized/migrated
+        // Doing it before creating a new session because:
+        // * we don't need one for that
+        // * it seems MySQL does not like having changes in the tables structure during a session (even if those change
+        // are not done as part of this session, just at the same time)
+        try {
+            getDataMigrationManager().checkDatabase();
+        } catch (Exception e) {
+            throw new XWikiException(XWikiException.MODULE_XWIKI_STORE,
+                XWikiException.ERROR_XWIKI_STORE_HIBERNATE_SWITCH_DATABASE, "Exception while initializing the database",
+                e);
         }
 
         // session is obviously null here
@@ -970,6 +1008,7 @@ public class HibernateStore implements Disposable, Integrator, Initializable
      */
     public void updateDatabase(String wikiId)
     {
+        // FIXME: refactor the init to provide the StandardServiceRegistry when creating the MetadataSources
         MetadataBuilder metadataBuilder = this.metadataSources.getMetadataBuilder(this.standardServiceRegistry);
 
         setWiki(metadataBuilder, wikiId);
@@ -1087,7 +1126,7 @@ public class HibernateStore implements Disposable, Integrator, Initializable
             // Try to create the Hibernate sequence
             try (Session session = getSessionFactory().openSession()) {
                 Transaction transaction = session.beginTransaction();
-                session.createSQLQuery(String.format("create sequence %s.hibernate_sequence", schemaName))
+                session.createNativeQuery(String.format("create sequence %s.hibernate_sequence", schemaName))
                     .executeUpdate();
                 transaction.commit();
             } catch (Exception e) {

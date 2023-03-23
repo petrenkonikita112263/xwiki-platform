@@ -183,7 +183,7 @@ XWiki.widgets.LiveTable = Class.create({
       }
       if (typeof self.tags != "undefined" && self.tags.length > 0) {
          self.tags.each(function(tag) {
-            url += ("&tag=" + encodeURIComponent(tag.unescapeHTML()));
+            url += ("&tag=" + encodeURIComponent(tag));
          });
       }
       url += self.getSortURLFragment();
@@ -746,6 +746,13 @@ var LiveTableHash = Class.create({
 
     var hashString = window.location.hash.substring(1);
     if (!hashString.blank()) {
+      // Recover from encoding done by URI implementations (like java.net.URI) that don't allow | in the fragment.
+      if (hashString.indexOf('%7Ct=') !== -1) {
+      // The string "%7Ct=" is safe to replace as it cannot occur in a filter as there the "=" would have been encoded,
+      // too.
+        hashString = hashString.replaceAll('%7Ct=', '|t=');
+        window.location.hash = "#" + hashString;
+      }
       var tables = hashString.split("|");
       for (var i = 0; i < tables.length; i++) {
         var params = tables[i].toQueryParams();
@@ -1288,7 +1295,7 @@ var LiveTableTagCloud = Class.create({
          if (typeof this.matchingTags[tagLabel.toLowerCase()] != "undefined") {
             tag.addClassName("selectable");
             Event.observe(tagSpan, "click", function(event) {
-                var tag = event.element().up("li").down("span").innerHTML.unescapeHTML();
+                var tag = event.element().up("li").down("span").textContent;
                 event.element().up("li").toggleClassName("selected");
                 if (event.element().up("li").hasClassName("selected")) {
                   self.selectedTags[tag] = {};
@@ -1315,7 +1322,7 @@ var LiveTableTagCloud = Class.create({
    getSelectedTags: function() {
       var result = new Array();
       this.domNode.select("li.selected").each(function(tag) {
-         result.push(tag.down("span").innerHTML);
+         result.push(tag.down("span").textContent);
       });
       return result;
    },

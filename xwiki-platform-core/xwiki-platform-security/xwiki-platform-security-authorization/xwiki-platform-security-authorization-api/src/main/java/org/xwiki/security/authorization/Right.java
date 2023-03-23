@@ -32,7 +32,6 @@ import java.util.Set;
 
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.xwiki.model.EntityType;
-import org.xwiki.stability.Unstable;
 
 import static org.xwiki.security.SecurityReference.FARM;
 import static org.xwiki.security.authorization.RuleState.ALLOW;
@@ -134,7 +133,7 @@ public class Right implements RightDescription, Serializable, Comparable<Right>
         LOGIN = new Right("login", ALLOW, ALLOW, true, null, WIKI_ONLY, true);
         VIEW = new Right("view", ALLOW, DENY, true, null, WIKI_SPACE_DOCUMENT, true);
         EDIT = new Right("edit", ALLOW, DENY, true, new RightSet(VIEW), WIKI_SPACE_DOCUMENT, false);
-        DELETE = new Right("delete", DENY, DENY, true, null, WIKI_SPACE_DOCUMENT, false);
+        DELETE = new Right("delete", DENY, DENY, true, Collections.singleton(VIEW), WIKI_SPACE_DOCUMENT, false);
         CREATOR =
             new Right("creator", DENY, ALLOW, false, new RightSet(DELETE), EnumSet.of(EntityType.DOCUMENT), false);
         REGISTER = new Right("register", ALLOW, ALLOW, true, null, WIKI_ONLY, false);
@@ -408,7 +407,6 @@ public class Right implements RightDescription, Serializable, Comparable<Right>
      * @return the list of statically registered rights.
      * @since 13.5RC1
      */
-    @Unstable
     public static List<Right> getStandardRights()
     {
         return STANDARD_RIGHTS;
@@ -421,7 +419,6 @@ public class Right implements RightDescription, Serializable, Comparable<Right>
      *
      * @since 13.5RC1
      */
-    @Unstable
     void unregister()
     {
         Set<EntityType> entityTypes = this.getTargetedEntityType();

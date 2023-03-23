@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.xwiki.platform</groupId>
     <artifactId>xwiki-platform-rendering</artifactId>
-    <version>14.4-SNAPSHOT</version>
+    <version>15.3-SNAPSHOT</version>
   </parent>
   <artifactId>xwiki-platform-rendering-macros</artifactId>
   <name>XWiki Platform - Rendering - Macros - Parent POM</name>
@@ -61,6 +61,11 @@
     <dependency>
       <groupId>org.hibernate.validator</groupId>
       <artifactId>hibernate-validator</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mortbay.jasper</groupId>
+      <artifactId>apache-el</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>
@@ -100,6 +105,7 @@ Thus it is forbidden to depend on the HTML Macro.
     <!-- Sorted Alphabetically -->
     <module>xwiki-platform-rendering-macro-cache</module>
     <module>xwiki-platform-rendering-macro-code</module>
+    <module>xwiki-platform-rendering-macro-code-oldcore</module>
     <module>xwiki-platform-rendering-macro-container</module>
     <module>xwiki-platform-rendering-macro-context</module>
     <module>xwiki-platform-rendering-macro-gallery</module>

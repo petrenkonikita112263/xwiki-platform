@@ -104,7 +104,7 @@
           &lt;div class="engine $type #if ($currentType != $type)hidden#end radio"&gt;
             &lt;label&gt;
               &lt;input type="radio" name="XWiki.Captcha.JCaptcha.ConfigurationClass_0_engine" value="$engine" $maybeChecked /&gt;
-              $services.localization.render("captcha.jcaptcha.engine.$engine")
+              $escapetool.xml($services.localization.render("captcha.jcaptcha.engine.$engine"))
             &lt;/label&gt;
           &lt;/div&gt;
         #end
@@ -114,7 +114,7 @@
           &lt;label&gt;
             ## Note: Using the same input name for the "custom" option
             &lt;input type="radio" name="XWiki.Captcha.JCaptcha.ConfigurationClass_0_engine" class="customActivator" #if ($isCustom)checked="checked"#end /&gt;
-            Custom:
+            $escapetool.xml($services.localization.render('captcha.jcaptcha.engine.custom'))
           &lt;/label&gt;
           &lt;input type="text" class="customEngine" #if ($isCustom)checked="checked" value="$currentEngine"#end /&gt;
         &lt;/div&gt;
@@ -124,7 +124,7 @@
   &lt;div&gt;
     &lt;input type="hidden" name="xredirect" value="$xwiki.requestURL" /&gt;
     &lt;input type="hidden" name="form_token" value="$services.csrf.getToken()" /&gt;
-    &lt;input type="submit" class="button" value="$services.localization.render('admin.save')" /&gt;
+    &lt;input type="submit" class="button" value="$escapetool.xml($services.localization.render('admin.save'))" /&gt;
   &lt;/div&gt;
 &lt;/form&gt;
 {{/html}}

@@ -21,15 +21,14 @@ package org.xwiki.uiextension.internal.macro;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 
 import javax.inject.Inject;
 import javax.inject.Named;
-import javax.inject.Provider;
 import javax.inject.Singleton;
 
 import org.xwiki.component.annotation.Component;
-import org.xwiki.component.manager.ComponentLookupException;
-import org.xwiki.component.manager.ComponentManager;
 import org.xwiki.rendering.block.Block;
 import org.xwiki.rendering.block.CompositeBlock;
 import org.xwiki.rendering.block.XDOM;
@@ -37,6 +36,7 @@ import org.xwiki.rendering.macro.AbstractMacro;
 import org.xwiki.rendering.macro.MacroExecutionException;
 import org.xwiki.rendering.transformation.MacroTransformationContext;
 import org.xwiki.uiextension.UIExtension;
+import org.xwiki.uiextension.UIExtensionManager;
 
 /**
  * Insert UI extensions.
@@ -55,20 +55,16 @@ public class UIExtensionMacro extends AbstractMacro<UIExtensionMacroParameters>
     private static final String DESCRIPTION = "Insert a UI extension.";
 
     @Inject
-    @Named("context")
-    private Provider<ComponentManager> contextComponentManagerProvider;
+    private UIExtensionManager uiextensions;
 
     /**
      * Default constructor.
      */
     public UIExtensionMacro()
     {
-        super("UI Extensions", DESCRIPTION, UIExtensionsMacroParameters.class);
+        super("UI Extensions", DESCRIPTION, UIExtensionMacroParameters.class);
 
-        // The ui extensions macro must execute first since if it runs with the current context it needs to bring
-        // all the macros from the extension before the other macros are executed.
-        setPriority(10);
-        setDefaultCategory(DEFAULT_CATEGORY_DEVELOPMENT);
+        setDefaultCategories(Set.of(DEFAULT_CATEGORY_DEVELOPMENT));
     }
 
     @Override
@@ -81,15 +77,13 @@ public class UIExtensionMacro extends AbstractMacro<UIExtensionMacroParameters>
     public List<Block> execute(UIExtensionMacroParameters parameters, String content,
         MacroTransformationContext context) throws MacroExecutionException
     {
-        UIExtension extension;
-        try {
-            extension = this.contextComponentManagerProvider.get().getInstance(UIExtension.class);
-        } catch (ComponentLookupException e) {
-            throw new MacroExecutionException(
-                "Failed to lookup UIExtension component with hint [" + parameters.getId() + "]", e);
+        Optional<UIExtension> extension = this.uiextensions.getUIExtension(parameters.getId());
+
+        if (extension.isEmpty()) {
+            throw new MacroExecutionException("Failed to find an extension id id [" + parameters.getId() + "]");
         }
 
-        Block block = extension.execute(context.isInline());
+        Block block = extension.get().execute(context.isInline());
 
         if (block instanceof XDOM || block instanceof CompositeBlock) {
             return block.getChildren();

@@ -34,6 +34,7 @@ import org.junit.jupiter.api.TestInfo;
 import org.xwiki.flamingo.skin.test.po.JobQuestionPane;
 import org.xwiki.model.reference.DocumentReference;
 import org.xwiki.model.reference.SpaceReference;
+import org.xwiki.rest.model.jaxb.Page;
 import org.xwiki.test.docker.junit5.TestReference;
 import org.xwiki.test.docker.junit5.UITest;
 import org.xwiki.test.ui.TestUtils;
@@ -42,6 +43,7 @@ import org.xwiki.test.ui.po.ConfirmationPage;
 import org.xwiki.test.ui.po.CopyOrRenameOrDeleteStatusPage;
 import org.xwiki.test.ui.po.DeletePageConfirmationPage;
 import org.xwiki.test.ui.po.DeletePageOutcomePage;
+import org.xwiki.test.ui.po.DeletedPageEntry;
 import org.xwiki.test.ui.po.DeletingPage;
 import org.xwiki.test.ui.po.ViewPage;
 import org.xwiki.tree.test.po.TreeElement;
@@ -72,10 +74,6 @@ class DeletePageIT
 
     private static final String DELETE_ACTION = "delete";
 
-    private static final String SPACE_VALUE = "Test";
-
-    private static final String PAGE_VALUE = "DeletePageTest";
-
     private static final String PAGE_CONTENT = "This page is used for testing delete functionality";
 
     private static final String PAGE_TITLE = "Page title that will be deleted";
@@ -83,12 +81,12 @@ class DeletePageIT
     private static final String DELETE_SUCCESSFUL = "Done.";
 
     @BeforeEach
-    void setUp(TestUtils setup)
+    void setUp(TestUtils setup, TestReference testReference)
     {
         setup.loginAsSuperAdmin();
 
         // Create a new Page that will be deleted
-        this.viewPage = setup.createPage(SPACE_VALUE, PAGE_VALUE, PAGE_CONTENT, PAGE_TITLE);
+        this.viewPage = setup.createPage(testReference, PAGE_CONTENT, PAGE_TITLE);
     }
 
     @AfterEach
@@ -114,7 +112,10 @@ class DeletePageIT
         // the hiding of the progress UI and the display of the success message.
         assertEquals(DELETE_SUCCESSFUL, deletingPage.getInfoMessage());
         DeletePageOutcomePage deleteOutcome = deletingPage.getDeletePageOutcomePage();
-        assertEquals(LOGGED_USERNAME, deleteOutcome.getPageDeleter());
+
+        List<DeletedPageEntry> deletedPagesEntries = deleteOutcome.getDeletedPagesEntries();
+        assertEquals(1, deletedPagesEntries.size());
+        assertEquals(LOGGED_USERNAME, deletedPagesEntries.get(0).getDeleter());
         assertEquals(DOCUMENT_NOT_FOUND, deleteOutcome.getMessage());
     }
 
@@ -124,14 +125,16 @@ class DeletePageIT
      */
     @Test
     @Order(2)
-    void deletePageCanSkipConfirmationAndDoARedirect(TestUtils setup)
+    void deletePageCanSkipConfirmationAndDoARedirect(TestUtils setup, TestReference testReference)
     {
-        String pageURL = setup.getURL(SPACE_VALUE, PAGE_VALUE + "Whatever");
-        setup.gotoPage(SPACE_VALUE, PAGE_VALUE, DELETE_ACTION, "confirm=1&xredirect=" + pageURL);
+        DocumentReference documentReference = new DocumentReference("Whatever", testReference.getLastSpaceReference());
+        String pageURL = setup.getURL(documentReference);
+        setup.gotoPage(testReference, DELETE_ACTION, "confirm=1&xredirect=" + pageURL);
         ViewPage vp = new ViewPage();
         // Since the page PAGE_VALUE + "Whatever" doesn't exist the View Action will redirect to the Nested Document
         // SPACE_VALUE + "." + PAGE_VALUE + "Whatever + ".WebHome".
-        assertEquals(SPACE_VALUE + "." + PAGE_VALUE + "Whatever", vp.getMetaDataValue("space"));
+        assertEquals(documentReference.toString(),
+            String.format("xwiki:%s", vp.getMetaDataValue("space")));
         assertEquals("WebHome", vp.getMetaDataValue("page"));
     }
 
@@ -140,17 +143,18 @@ class DeletePageIT
      */
     @Test
     @Order(3)
-    void deletePageCanDoRedirect(TestUtils setup)
+    void deletePageCanDoRedirect(TestUtils setup, TestReference testReference)
     {
-        // Set the current page to be any page (doesn't matter if it exists or not)
-        String pageURL = setup.getURL(SPACE_VALUE, PAGE_VALUE + "Whatever");
-        setup.gotoPage(SPACE_VALUE, PAGE_VALUE, DELETE_ACTION, "xredirect=" + pageURL);
+        DocumentReference documentReference = new DocumentReference("Whatever", testReference.getLastSpaceReference());
+        String pageURL = setup.getURL(documentReference);
+        setup.gotoPage(testReference, DELETE_ACTION, "xredirect=" + pageURL);
         ConfirmationPage confirmation = new ConfirmationPage();
         confirmation.clickYes();
         ViewPage vp = new ViewPage();
         // Since the page PAGE_VALUE + "Whatever" doesn't exist the View Action will redirect to the Nested Document
         // SPACE_VALUE + "." + PAGE_VALUE + "Whatever + ".WebHome".
-        assertEquals(SPACE_VALUE + "." + PAGE_VALUE + "Whatever", vp.getMetaDataValue("space"));
+        assertEquals(documentReference.toString(),
+            String.format("xwiki:%s", vp.getMetaDataValue("space")));
         assertEquals("WebHome", vp.getMetaDataValue("page"));
     }
 
@@ -159,10 +163,10 @@ class DeletePageIT
      */
     @Test
     @Order(4)
-    void deletePageGoesToOriginalPageWhenCancelled(TestUtils setup, XWikiWebDriver driver)
+    void deletePageGoesToOriginalPageWhenCancelled(TestUtils setup, XWikiWebDriver driver, TestReference testReference)
     {
         this.viewPage.deletePage().clickNo();
-        assertEquals(setup.getURL(SPACE_VALUE, PAGE_VALUE), driver.getCurrentUrl());
+        assertEquals(setup.getURL(testReference), driver.getCurrentUrl() + "WebHome");
     }
 
     @Test
@@ -185,38 +189,45 @@ class DeletePageIT
     @Order(6)
     void deleteTerminalAndNonTerminalPages(TestUtils setup, TestReference reference)
     {
-        DocumentReference nonTerminalPageRef = reference;
-        DocumentReference terminalPageRef = new DocumentReference(nonTerminalPageRef.getParent().getName(),
-            (SpaceReference) nonTerminalPageRef.getParent().getParent());
-
-        // Clean up.
-        setup.deletePage(terminalPageRef);
-        setup.deletePage(nonTerminalPageRef);
-
-        // Create the non terminal page.
-        ViewPage nonTerminalPage = setup.createPage(nonTerminalPageRef, "Content", "Title");
-        // Delete it
-        nonTerminalPage.deletePage().clickYes();
-        DeletingPage deletingPage = new DeletingPage();
-        deletingPage.waitUntilFinished();
-
-        // Look at the recycle bin
-        DeletePageOutcomePage deletePageOutcomePage = deletingPage.getDeletePageOutcomePage();
-        assertFalse(deletePageOutcomePage.hasTerminalPagesInRecycleBin());
+        SpaceReference lastSpaceReference = reference.getLastSpaceReference();
+        // We use a slightly different test reference name to ensure the page is not created yet.
+        String referenceName = lastSpaceReference.getName() + "1";
+        DocumentReference nonTerminalPageRef = new DocumentReference("WebHome",
+            new SpaceReference(referenceName, lastSpaceReference.getParent()));
+        DocumentReference terminalPageRef = new DocumentReference(referenceName,
+            (SpaceReference) lastSpaceReference.getParent());
 
         // Create the terminal page.
         ViewPage terminalPage = setup.createPage(terminalPageRef, "Content", "Title");
         // Delete it
         terminalPage.deletePage().clickYes();
+        DeletingPage deletingPage = new DeletingPage();
+        deletingPage.waitUntilFinished();
+
+        // Look at the recycle bin
+        DeletePageOutcomePage deletePageOutcomePage = deletingPage.getDeletePageOutcomePage();
+        assertTrue(deletePageOutcomePage.getDeletedPagesEntries().isEmpty());
+        assertEquals(1, deletePageOutcomePage.getDeletedTerminalPagesEntries().size());
+
+        // Create the non terminal page.
+        ViewPage nonTerminalPage = setup.createPage(nonTerminalPageRef, "Content", "Title");
+        // Delete it
+        nonTerminalPage.deletePage().clickYes();
         deletingPage.waitUntilFinished();
 
         // Look at the recycle bin
         deletePageOutcomePage = deletingPage.getDeletePageOutcomePage();
-        assertTrue(deletePageOutcomePage.hasTerminalPagesInRecycleBin());
+
+        List<DeletedPageEntry> deletedTerminalPagesEntries = deletePageOutcomePage.getDeletedTerminalPagesEntries();
+        List<DeletedPageEntry> deletedPagesEntries = deletePageOutcomePage.getDeletedPagesEntries();
+
+        assertEquals(1, deletedPagesEntries.size());
+        assertEquals(1, deletedTerminalPagesEntries.size());
 
         // Delete both version in the recycle bin
-        deletePageOutcomePage.clickDeletePage();
-        deletePageOutcomePage.clickDeleteTerminalPage();
+        deletePageOutcomePage = deletedTerminalPagesEntries.get(0).clickDelete();
+        deletedPagesEntries = deletePageOutcomePage.getDeletedPagesEntries();
+        deletedPagesEntries.get(0).clickDelete();
     }
 
     /**
@@ -398,14 +409,14 @@ class DeletePageIT
      */
     @Test
     @Order(9)
-    void deleteToRecycleBin(TestUtils setup)
+    void deleteToRecycleBin(TestUtils setup, TestReference testReference)
     {
         // Set the user type to Advanced
         Map<String, Object> userProperties = new HashMap<>();
         userProperties.put("usertype", "Advanced");
         setup.updateObject("XWiki", "superadmin", "XWiki.XWikiUsers", 0, userProperties);
 
-        setup.gotoPage(SPACE_VALUE, PAGE_VALUE);
+        setup.gotoPage(testReference);
         DeletePageConfirmationPage confirmationPage = this.viewPage.deletePage();
         assertFalse(confirmationPage.isRecycleBinOptionsDisplayed());
 
@@ -414,7 +425,7 @@ class DeletePageIT
         setup.updateObject(REFACTORING_CONFIGURATION_REFERENCE, "Refactoring.Code.RefactoringConfigurationClass", 0,
             "isRecycleBinSkippingActivated", "1");
 
-        setup.gotoPage(SPACE_VALUE, PAGE_VALUE);
+        setup.gotoPage(testReference);
         confirmationPage = this.viewPage.deletePage();
 
         assertTrue(confirmationPage.isRecycleBinOptionsDisplayed());
@@ -424,7 +435,9 @@ class DeletePageIT
         deletingPage.waitUntilFinished();
         assertEquals(DELETE_SUCCESSFUL, deletingPage.getInfoMessage());
         DeletePageOutcomePage deleteOutcome = deletingPage.getDeletePageOutcomePage();
-        assertEquals(LOGGED_USERNAME, deleteOutcome.getPageDeleter());
+        List<DeletedPageEntry> deletedPagesEntries = deleteOutcome.getDeletedPagesEntries();
+        assertEquals(1, deletedPagesEntries.size());
+        assertEquals(LOGGED_USERNAME, deletedPagesEntries.get(0).getDeleter());
         assertEquals(DOCUMENT_NOT_FOUND, deleteOutcome.getMessage());
     }
 
@@ -444,8 +457,9 @@ class DeletePageIT
         deletingPage.waitUntilFinished();
         assertEquals(DELETE_SUCCESSFUL, deletingPage.getInfoMessage());
         DeletePageOutcomePage deleteOutcome = deletingPage.getDeletePageOutcomePage();
-        assertEquals(LOGGED_USERNAME, deleteOutcome.getPageDeleter());
         assertEquals(DOCUMENT_NOT_FOUND, deleteOutcome.getMessage());
+        ViewPage viewPage1 = new ViewPage();
+        assertTrue(viewPage1.isNewDocument());
     }
 
     /**
@@ -614,8 +628,8 @@ class DeletePageIT
         List<TreeNodeElement> topLevelNodes = treeElement.getTopLevelNodes();
 
         // there is a single node for the xclass:
-        //  1. to represent free pages
-        //  2. to represent classes with associated objects
+        // 1. to represent free pages
+        // 2. to represent classes with associated objects
         assertEquals(1, topLevelNodes.size());
 
         TreeNodeElement classPage = topLevelNodes.get(0);
@@ -647,5 +661,121 @@ class DeletePageIT
         setup.gotoPage(frenchXClassTranslation);
         deletePageOutcomePage = new DeletePageOutcomePage();
         assertEquals("Impossible de trouver ce document.", deletePageOutcomePage.getMessage());
+    }
+
+    /**
+     * Check that when a new target document is selected, the backlinks are updated to the new value and the redirect is
+     * working when accessing the old page.
+     *
+     * @since 14.4.2
+     * @since 14.5
+     */
+    @Test
+    @Order(13)
+    void deleteWithUpdateLinksAndAutoRedirect(TestUtils testUtils, TestReference reference) throws Exception
+    {
+        DocumentReference backlinkDocumentReference = new DocumentReference("xwiki", "Backlink", "WebHome");
+        DocumentReference newTargetReference = new DocumentReference("xwiki", "NewTarget", "WebHome");
+
+        testUtils.createPage(reference, PAGE_CONTENT, PAGE_TITLE);
+        // Create backlink.
+        testUtils.createPage(backlinkDocumentReference,
+            String.format("[[Link>>doc:%s]]", testUtils.serializeReference(reference)), "Backlink document");
+        testUtils.createPage(newTargetReference, "", "New target");
+
+        // Delete page and provide a new target, with updateLinks and autoRedirect enabled.
+        ViewPage viewPage = testUtils.gotoPage(reference);
+        DeletePageConfirmationPage confirmationPage = viewPage.deletePage();
+        confirmationPage.setNewBacklinkTarget(testUtils.serializeReference(newTargetReference));
+        confirmationPage.setUpdateLinks(true);
+        confirmationPage.setAutoRedirect(true);
+        confirmationPage.clickYes();
+        DeletingPage deletingPage = new DeletingPage();
+        deletingPage.waitUntilFinished();
+        assertEquals(DELETE_SUCCESSFUL, deletingPage.getInfoMessage());
+
+        // Verify that a redirect was added and the link was updated.
+        viewPage = testUtils.gotoPage(reference);
+        assertEquals("New target", this.viewPage.getDocumentTitle());
+        assertEquals("[[Link>>doc:NewTarget.WebHome]]",
+            testUtils.rest().<Page>get(backlinkDocumentReference).getContent());
+    }
+
+    /**
+     * Check that if a new target is not selected, the backlinks are not altered and no redirect is added.
+     *
+     * @since 14.4.2
+     * @since 14.5
+     */
+    @Test
+    @Order(14)
+    void deleteWithoutNewTarget(TestUtils testUtils, TestReference reference) throws Exception
+    {
+        DocumentReference backlinkDocReference = new DocumentReference("xwiki", "Backlink", "WebHome");
+        String backlinkDocContent = String.format("[[Link>>doc:%s]]", testUtils.serializeReference(reference));
+
+        testUtils.createPage(reference, PAGE_CONTENT, PAGE_TITLE);
+        // Create backlink.
+        testUtils.createPage(backlinkDocReference, backlinkDocContent, "Backlink document");
+
+        // Delete page without specifying a new target.
+        ViewPage viewPage = testUtils.gotoPage(reference);
+        DeletePageConfirmationPage confirmationPage = viewPage.deletePage();
+        confirmationPage.clickYes();
+        DeletingPage deletingPage = new DeletingPage();
+        deletingPage.waitUntilFinished();
+
+        // Verify that there is no redirect and the links were not altered.
+        assertEquals(DELETE_SUCCESSFUL, deletingPage.getInfoMessage());
+        DeletePageOutcomePage deleteOutcome = deletingPage.getDeletePageOutcomePage();
+        assertEquals(LOGGED_USERNAME, deleteOutcome.getPageDeleter());
+        assertEquals(DOCUMENT_NOT_FOUND, deleteOutcome.getMessage());
+        assertEquals(backlinkDocContent, testUtils.rest().<Page>get(backlinkDocReference).getContent());
+    }
+
+    /**
+     * Test that when you delete a page and you select "affect children" along with a new target document, only the
+     * parent page has the backlinks updated a the redirect added.
+     *
+     * @since 14.4.2
+     * @since 14.5
+     */
+    @Test
+    @Order(15)
+    void deleteWithAffectChildrenAndNewTarget(TestUtils testUtils, TestReference parentReference) throws Exception
+    {
+        DocumentReference childReference = new DocumentReference("Child", parentReference.getLastSpaceReference());
+        String childFullName = testUtils.serializeReference(childReference).split(":")[1];
+        DocumentReference backlinkDocReference = new DocumentReference("xwiki", "Backlink", "WebHome");
+        DocumentReference newTargetReference = new DocumentReference("xwiki", "NewTarget", "WebHome");
+
+        testUtils.createPage(parentReference, "Content", "Parent");
+        testUtils.createPage(childReference, "", "Child");
+        testUtils.createPage(newTargetReference, "", "New target");
+        // Create backlinks to the parent and the child page.
+        String format = "[[Parent>>doc:%s]] [[Child>>doc:%s]]";
+        testUtils.createPage(backlinkDocReference,
+            String.format(format, testUtils.serializeReference(parentReference), childFullName), "Backlink document");
+
+        // Delete parent page with affectChildren and newTarget (updateLinks and autoRedirect enabled).
+        ViewPage parentPage = testUtils.gotoPage(parentReference);
+        DeletePageConfirmationPage confirmationPage = parentPage.deletePage();
+        confirmationPage.setAffectChildren(true);
+        confirmationPage.setNewBacklinkTarget(testUtils.serializeReference(newTargetReference));
+        confirmationPage.setUpdateLinks(true);
+        confirmationPage.setAutoRedirect(true);
+        confirmationPage.clickYes();
+        DeletingPage deletingPage = new DeletingPage();
+        deletingPage.waitUntilFinished();
+
+        // Verify that there is no redirect on the child page and backlink was not altered.
+        assertEquals(DELETE_SUCCESSFUL, deletingPage.getInfoMessage());
+        String newContent =
+            String.format(format, testUtils.serializeReference(newTargetReference).split(":")[1], childFullName);
+        assertEquals(newContent, testUtils.rest().<Page>get(backlinkDocReference).getContent());
+        parentPage = testUtils.gotoPage(parentReference);
+        assertEquals("New target", parentPage.getDocumentTitle());
+        ViewPage childPage = testUtils.gotoPage(childReference);
+        assertEquals("Child", childPage.getDocumentTitle());
     }
 }

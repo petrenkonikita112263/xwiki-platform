@@ -29,7 +29,6 @@
   <creator>xwiki:XWiki.Admin</creator>
   <parent>XWiki.Notifications.Code.WebHome</parent>
   <author>xwiki:XWiki.Admin</author>
-  <originalMetadataAuthor>xwiki:XWiki.Admin</originalMetadataAuthor>
   <contentAuthor>xwiki:XWiki.Admin</contentAuthor>
   <version>1.1</version>
   <title>NotificationsFiltersPreferencesMacro</title>
@@ -866,7 +865,7 @@ require(['jquery', 'AddNotificationFilterPreferenceLivetable', 'xwiki-bootstrap-
         <separators>|, </separators>
         <size>5</size>
         <unmodifiable>0</unmodifiable>
-        <values>action=Action|doc.reference=Document|icon.theme=Icon theme|locale=Language|rendering.defaultsyntax=Default syntax|rendering.restricted=Restricted|rendering.targetsyntax=Target syntax|request.base=Request base URL|request.parameters=Request parameters|request.url=Request URL|request.wiki=Request wiki|user=User|wiki=Wiki</values>
+        <values>action=Action|doc.reference=Document|icon.theme=Icon theme|locale=Language|rendering.defaultsyntax=Default syntax|rendering.restricted=Restricted|rendering.targetsyntax=Target syntax|request.base=Request base URL|request.cookies|request.parameters=Request parameters|request.url=Request URL|request.wiki=Request wiki|user=User|wiki=Wiki</values>
         <classType>com.xpn.xwiki.objects.classes.StaticListClass</classType>
       </async_context>
       <async_enabled>
@@ -941,15 +940,24 @@ require(['jquery', 'AddNotificationFilterPreferenceLivetable', 'xwiki-bootstrap-
         <values>Optional|Mandatory|No content</values>
         <classType>com.xpn.xwiki.objects.classes.StaticListClass</classType>
       </contentType>
-      <defaultCategory>
+      <defaultCategories>
+        <cache>0</cache>
         <disabled>0</disabled>
-        <name>defaultCategory</name>
+        <displayType>input</displayType>
+        <freeText>forbidden</freeText>
+        <largeStorage>0</largeStorage>
+        <multiSelect>1</multiSelect>
+        <name>defaultCategories</name>
         <number>4</number>
-        <prettyName>Default category</prettyName>
-        <size>30</size>
+        <prettyName>Default categories</prettyName>
+        <relationalStorage>0</relationalStorage>
+        <separator> </separator>
+        <separators>|, </separators>
+        <size>1</size>
         <unmodifiable>0</unmodifiable>
-        <classType>com.xpn.xwiki.objects.classes.StringClass</classType>
-      </defaultCategory>
+        <values/>
+        <classType>com.xpn.xwiki.objects.classes.StaticListClass</classType>
+      </defaultCategories>
       <description>
         <contenttype>PureText</contenttype>
         <disabled>0</disabled>
@@ -1042,11 +1050,11 @@ require(['jquery', 'AddNotificationFilterPreferenceLivetable', 'xwiki-bootstrap-
 ## This should be improved later with such API.
 #elseif ("$!wikimacro.parameters.user" != "" &amp;&amp; $wikimacro.parameters.user.class.simpleName != 'DocumentUserReference')
   {{error}}
-    This macro only allows to handle DocumentUserReference references and you specified a $wikimacro.parameters.user.class.simpleName reference.
+    This macro only allows to handle DocumentUserReference references and you specified a $services.rendering.escape($wikimacro.parameters.user.class.simpleName, 'xwiki/2.1') reference.
   {{/error}}
 #elseif ("$!wikimacro.parameters.user" != "" &amp;&amp; !$services.security.authorization.hasAccess('admin', $wikimacro.parameters.user.reference) &amp;&amp; !$xcontext.userReference.equals($wikimacro.parameters.user.reference))
   {{error}}
-    You don't have administration right on  $wikimacro.parameters.user.
+    You don't have administration right on $services.rendering.escape($wikimacro.parameters.user, 'xwiki/2.1').
   {{/error}}
 #else
 #set ($discard = $services.logging.deprecate("NotificationsFiltersPreferencesMacro", "This macro should not be used anymore in favor of SystemNotificationsFiltersPreferencesMacro and CustomNotificationsFiltersPreferencesMacro."))
@@ -1067,7 +1075,8 @@ require(['jquery', 'AddNotificationFilterPreferenceLivetable', 'xwiki-bootstrap-
 ### MACRO CONTENT
 ######################################################
 {{html clean="false"}}
-&lt;div class="filterPreferences xform" data-user-url="$escapetool.xml($services.rest.url($targetUser))" data-user="$services.model.serialize($targetUser)"&gt;
+&lt;div class="filterPreferences xform" data-user-url="$escapetool.xml($services.rest.url($targetUser))"
+  data-user="$escapetool.xml($services.model.serialize($targetUser))"&gt;
   &lt;div class="row"&gt;
     &lt;p class="xHint col-xs-12 col-sm-9 col-md-8 col-lg-9"&gt;
       $escapetool.xml($services.localization.render('notifications.settings.filters.preferences.hint'))
@@ -1101,7 +1110,8 @@ require(['jquery', 'AddNotificationFilterPreferenceLivetable', 'xwiki-bootstrap-
 ######################################################
 ### ADD FILTER MODAL
 ######################################################
-&lt;div class="modal fade" tabindex="-1" role="dialog" id="modal-add-filter-preference" data-user="$services.model.serialize($targetUser)"&gt;
+&lt;div class="modal fade" tabindex="-1" role="dialog" id="modal-add-filter-preference"
+  data-user="$escapetool.xml($services.model.serialize($targetUser))"&gt;
   &lt;div class="modal-dialog" role="document"&gt;
     &lt;div class="modal-content"&gt;
       &lt;div class="modal-header"&gt;
@@ -1186,7 +1196,9 @@ require(['jquery', 'AddNotificationFilterPreferenceLivetable', 'xwiki-bootstrap-
       <contentType>No content</contentType>
     </property>
     <property>
-      <defaultCategory>Notifications</defaultCategory>
+      <defaultCategories>
+        <value>Notifications</value>
+      </defaultCategories>
     </property>
     <property>
       <description>Display the preferences of the current user about notification filters.

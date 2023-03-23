@@ -28,6 +28,7 @@ import org.xwiki.rendering.syntax.Syntax;
 import org.xwiki.security.authorization.Right;
 import org.xwiki.security.script.SecurityScriptServiceComponentList;
 import org.xwiki.template.TemplateManager;
+import org.xwiki.template.script.TemplateScriptService;
 import org.xwiki.test.annotation.ComponentList;
 import org.xwiki.test.page.PageTest;
 
@@ -49,7 +50,8 @@ import static org.mockito.Mockito.when;
  */
 @SecurityScriptServiceComponentList
 @ComponentList({
-    ModelScriptService.class
+    ModelScriptService.class,
+    TemplateScriptService.class
 })
 class DisplayPageTest extends PageTest
 {
@@ -59,14 +61,14 @@ class DisplayPageTest extends PageTest
 
     private static final String FIELD_PRETTY_NAME = "Test Field";
 
-    private static final String DEFAULT_LABEL = "defaultValue";
+    private static final String DEFAULT_LABEL = "space.page_testField_";
 
     private static final String VALUE_1 = "value1";
 
     private static final String DEFAULT_SELECT =
         "<select id='space.page_0_testField' name='space.page_0_testField' size='1'>"
-        + "<option selected='selected' value='' label='defaultValue'>defaultValue</option>"
-        + "<option value='value1' label='value1'>value1</option></select>"
+        + "<option selected='selected' value='' label='space.page_testField_'>space.page_testField_</option>"
+        + "<option value='value1' label='space.page_testField_value1'>space.page_testField_value1</option></select>"
         + "<input name='space.page_0_testField' type='hidden' value=''/>";
 
     private TemplateManager templateManager;

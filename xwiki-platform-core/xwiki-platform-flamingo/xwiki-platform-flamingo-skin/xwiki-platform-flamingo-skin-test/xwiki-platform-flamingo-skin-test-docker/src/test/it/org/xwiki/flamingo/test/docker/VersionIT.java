@@ -23,15 +23,18 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
 import org.openqa.selenium.By;
+import org.xwiki.flamingo.skin.test.po.AttachmentsPane;
+import org.xwiki.flamingo.skin.test.po.AttachmentsViewPage;
 import org.xwiki.model.reference.AttachmentReference;
 import org.xwiki.test.docker.junit5.TestReference;
 import org.xwiki.test.docker.junit5.UITest;
 import org.xwiki.test.ui.TestUtils;
-import org.xwiki.test.ui.po.AttachmentsPane;
 import org.xwiki.test.ui.po.HistoryPane;
 import org.xwiki.test.ui.po.ViewPage;
 import org.xwiki.test.ui.po.editor.WikiEditPage;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.startsWith;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -92,19 +95,24 @@ class VersionIT
     }
 
     /**
-     * See XWIKI-8781
+     * See XWIKI-8781 & XWIKI-20589
      */
     @Test
     @Order(2)
-    void testDeleteLatestVersion(TestUtils utils, TestReference testReference) throws Exception
+    void testDeleteLatestVersion(TestUtils setup, TestReference testReference) throws Exception
     {
-        utils.rest().delete(testReference);
+        setup.rest().delete(testReference);
 
-        // Create first version of the page
-        ViewPage vp = utils.createPage(testReference, CONTENT1, TITLE);
+        // Create first version of the page, as superadmin
+        setup.createPage(testReference, CONTENT1, TITLE);
 
-        // Adds second version
-        WikiEditPage wikiEditPage = vp.editWiki();
+        // Log as another user having admin permissions (to be able to delete a revision)
+        setup.createAdminUser();
+
+        // Adds second version, as Admin
+        ViewPage vp = setup.gotoPage(testReference);
+        vp.edit();
+        WikiEditPage wikiEditPage = new WikiEditPage();
         wikiEditPage.setContent(CONTENT2);
         wikiEditPage.clickSaveAndView();
 
@@ -120,6 +128,9 @@ class VersionIT
         // Verify that the current version is now the previous one.
         assertEquals("1.1", historyTab.getCurrentVersion());
         assertEquals("superadmin", historyTab.getCurrentAuthor());
+
+        // Verify that the last modified author of the page is the author from revision 1.1
+        assertTrue(vp.getLastModifiedText().startsWith("Last modified by superadmin"));
     }
 
     @Test
@@ -142,20 +153,20 @@ class VersionIT
         ViewPage vp = utils.gotoPage(testReference);
 
         // Make sure expected attachment is there
-        AttachmentsPane attachmentsPane = vp.openAttachmentsDocExtraPane();
+        AttachmentsPane attachmentsPane = new AttachmentsViewPage().openAttachmentsDocExtraPane();
         assertEquals(1, attachmentsPane.getNumberOfAttachments());
         assertEquals("1.2", attachmentsPane.getLatestVersionOfAttachment(attachmentReference.getName()));
 
         // Revert to 1.1 (empty page)
         vp = vp.openHistoryDocExtraPane().rollbackToVersion("1.1");
 
-        attachmentsPane = vp.openAttachmentsDocExtraPane();
+        attachmentsPane = new AttachmentsViewPage().openAttachmentsDocExtraPane();
         assertEquals(0, attachmentsPane.getNumberOfAttachments());
 
         // Revert to 3.1 (second update of the attachment)
         vp = vp.openHistoryDocExtraPane().rollbackToVersion("3.1");
 
-        attachmentsPane = vp.openAttachmentsDocExtraPane();
+        attachmentsPane = new AttachmentsViewPage().openAttachmentsDocExtraPane();
         assertEquals(1, attachmentsPane.getNumberOfAttachments());
         assertEquals("1.2", attachmentsPane.getLatestVersionOfAttachment(attachmentReference.getName()));
         attachmentsPane.getAttachmentLink(attachmentReference.getName()).click();
@@ -164,7 +175,7 @@ class VersionIT
         // Revert to 2.1 (first update of the attachment)
         vp = utils.gotoPage(testReference).openHistoryDocExtraPane().rollbackToVersion("2.1");
 
-        attachmentsPane = vp.openAttachmentsDocExtraPane();
+        attachmentsPane = new AttachmentsViewPage().openAttachmentsDocExtraPane();
         assertEquals(1, attachmentsPane.getNumberOfAttachments());
         assertEquals("1.3", attachmentsPane.getLatestVersionOfAttachment(attachmentReference.getName()));
         attachmentsPane.getAttachmentLink(attachmentReference.getName()).click();
@@ -173,13 +184,13 @@ class VersionIT
         // Back to empty page again
         vp = utils.gotoPage(testReference).openHistoryDocExtraPane().rollbackToVersion("1.1");
 
-        attachmentsPane = vp.openAttachmentsDocExtraPane();
+        attachmentsPane = new AttachmentsViewPage().openAttachmentsDocExtraPane();
         assertEquals(0, attachmentsPane.getNumberOfAttachments());
 
         // Revert to 2.1 (first update of the attachment)
         vp = vp.openHistoryDocExtraPane().rollbackToVersion("2.1");
 
-        attachmentsPane = vp.openAttachmentsDocExtraPane();
+        attachmentsPane = new AttachmentsViewPage().openAttachmentsDocExtraPane();
         assertEquals(1, attachmentsPane.getNumberOfAttachments());
         assertEquals("1.3", attachmentsPane.getLatestVersionOfAttachment(attachmentReference.getName()));
         attachmentsPane.getAttachmentLink(attachmentReference.getName()).click();
@@ -214,7 +225,7 @@ class VersionIT
         utils.rest().attachFile(attachmentReference, "2".getBytes(), true);
 
         ViewPage viewPage = utils.gotoPage(testReference);
-        AttachmentsPane attachmentsPane = viewPage.openAttachmentsDocExtraPane();
+        AttachmentsPane attachmentsPane = new AttachmentsViewPage().openAttachmentsDocExtraPane();
         assertTrue(attachmentsPane.attachmentExistsByFileName("file.txt"));
         assertEquals("1.1", attachmentsPane.getLatestVersionOfAttachment("file.txt"));
 
@@ -223,10 +234,56 @@ class VersionIT
         HistoryPane historyPane = viewPage.openHistoryDocExtraPane();
 
         viewPage = historyPane.rollbackToVersion("2.1");
-        attachmentsPane = viewPage.openAttachmentsDocExtraPane();
+        attachmentsPane = new AttachmentsViewPage().openAttachmentsDocExtraPane();
         assertTrue(attachmentsPane.attachmentExistsByFileName("file.txt"));
         assertEquals("1.1", attachmentsPane.getLatestVersionOfAttachment("file.txt"));
         attachmentsPane.getAttachmentLink("file.txt").click();
         assertEquals("1", utils.getDriver().findElement(By.tagName("html")).getText());
     }
+
+    @Test
+    @Order(5)
+    void oldRevisionsAreRestricted(TestUtils utils, TestReference testReference) throws Exception
+    {
+        utils.loginAsSuperAdmin();
+
+        utils.rest().delete(testReference);
+
+        // Create first version of the page
+        ViewPage vp = utils.createPage(testReference, "{{velocity}}" + CONTENT1 + "{{/velocity}}", TITLE);
+        assertEquals(CONTENT1, vp.getContent());
+
+        // Adds second version
+        WikiEditPage wikiEditPage = vp.editWiki();
+        wikiEditPage.setContent("{{velocity}}" + CONTENT2 + "{{velocity}}");
+        vp = wikiEditPage.clickSaveAndView();
+
+        assertEquals(CONTENT2, vp.getContent());
+
+        // TODO: Remove when XWIKI-6688 (Possible race condition when clicking on a tab at the bottom of a page in
+        // view mode) is fixed.
+        vp.waitForDocExtraPaneActive("comments");
+
+        HistoryPane historyTab = vp.openHistoryDocExtraPane();
+        vp = historyTab.viewVersion("1.1");
+
+        // In the preview the Velocity macro should be forbidden.
+        assertThat(vp.getContent(), startsWith("Failed to execute the [velocity] macro."));
+
+        // TODO: Remove when XWIKI-6688 (Possible race condition when clicking on a tab at the bottom of a page in
+        // view mode) is fixed.
+        vp.waitForDocExtraPaneActive("comments");
+
+        historyTab = vp.openHistoryDocExtraPane();
+        vp = historyTab.rollbackToVersion("1.1");
+
+        // Rollback doesn't wait...
+        // Wait for the comment tab to be selected since we're currently on the history tab and rolling
+        // back is going to load a new page and make the focus active on the comments tab.
+        vp.waitForDocExtraPaneActive("comments");
+
+        // Assert that scripts are executed again after restoring the version.
+        assertEquals(CONTENT1, vp.getContent());
+    }
+
 }

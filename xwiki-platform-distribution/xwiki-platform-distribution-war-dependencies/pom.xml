@@ -25,7 +25,7 @@
   <parent>
     <groupId>org.xwiki.platform</groupId>
     <artifactId>xwiki-platform-distribution</artifactId>
-    <version>14.4-SNAPSHOT</version>
+    <version>15.3-SNAPSHOT</version>
   </parent>
   <artifactId>xwiki-platform-distribution-war-dependencies</artifactId>
   <name>XWiki Platform - Distribution - War - Dependencies</name>
@@ -330,12 +330,6 @@
     </dependency>
     <dependency>
       <groupId>org.xwiki.platform</groupId>
-      <artifactId>xwiki-platform-formula-macro</artifactId>
-      <version>${project.version}</version>
-      <scope>runtime</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.xwiki.platform</groupId>
       <artifactId>xwiki-platform-office-viewer</artifactId>
       <version>${project.version}</version>
       <scope>runtime</scope>
@@ -361,6 +355,12 @@
     <dependency>
       <groupId>org.xwiki.platform</groupId>
       <artifactId>xwiki-platform-rendering-macro-code</artifactId>
+      <version>${project.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-rendering-macro-code-oldcore</artifactId>
       <version>${project.version}</version>
       <scope>runtime</scope>
     </dependency>
@@ -424,10 +424,10 @@
       <version>${project.version}</version>
       <scope>runtime</scope>
     </dependency>
-    <!-- Active Installs -->
+    <!-- Active Installs 2 -->
     <dependency>
       <groupId>org.xwiki.platform</groupId>
-      <artifactId>xwiki-platform-activeinstalls-client-api</artifactId>
+      <artifactId>xwiki-platform-activeinstalls2-api</artifactId>
       <version>${project.version}</version>
       <scope>runtime</scope>
     </dependency>
@@ -435,18 +435,6 @@
     <dependency>
       <groupId>org.xwiki.platform</groupId>
       <artifactId>xwiki-platform-localization-macro</artifactId>
-      <version>${project.version}</version>
-      <scope>runtime</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.xwiki.platform</groupId>
-      <artifactId>xwiki-platform-localization-rest-default</artifactId>
-      <version>${project.version}</version>
-      <scope>runtime</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.xwiki.platform</groupId>
-      <artifactId>xwiki-platform-localization-webjar</artifactId>
       <version>${project.version}</version>
       <scope>runtime</scope>
     </dependency>
@@ -528,12 +516,6 @@
     <dependency>
       <groupId>org.xwiki.platform</groupId>
       <artifactId>xwiki-platform-eventstream-default</artifactId>
-      <version>${project.version}</version>
-      <scope>runtime</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.xwiki.platform</groupId>
-      <artifactId>xwiki-platform-eventstream-store-hibernate</artifactId>
       <version>${project.version}</version>
       <scope>runtime</scope>
     </dependency>
@@ -671,6 +653,28 @@
     <dependency>
       <groupId>org.xwiki.platform</groupId>
       <artifactId>xwiki-platform-diffplugin</artifactId>
+      <version>${project.version}</version>
+      <scope>runtime</scope>
+    </dependency>
+
+    <!-- TODO: remove when https://jira.xwiki.org/browse/XWIKI-19932 is fixed
+        In the non-legacy WAR because:
+           * the migration UI is in part of the default flavor
+           * it's currently too complex for installed extensions to inject tables
+     -->
+    <dependency>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-legacy-events-hibernate-api</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+
+    <!-- Must be a core extension because xwiki-platform-mentions-api must itself be a core extension. Otherwise,
+         the components from mentions-api that depend on components from mentions-default are not reloaded when needed.
+         One concrete consequence being exceptions thrown when accessing a configuration cache in a 'finished' state.
+         TODO: remove when we drop support for the old event store. See https://jira.xwiki.org/browse/XWIKI-19933 -->
+    <dependency>
+      <groupId>org.xwiki.platform</groupId>
+      <artifactId>xwiki-platform-mentions-default</artifactId>
       <version>${project.version}</version>
       <scope>runtime</scope>
     </dependency>
