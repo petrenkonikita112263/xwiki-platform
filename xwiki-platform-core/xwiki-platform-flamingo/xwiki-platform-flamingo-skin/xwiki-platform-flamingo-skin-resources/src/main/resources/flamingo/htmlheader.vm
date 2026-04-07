@@ -124,6 +124,12 @@
       #template("meta.vm")
     #end
     ## ---------------------------------------------------------------------------------------------------------------
+    ## Add all HTML tags contributed by UIX for the "org.xwiki.platform.html.head" UIXP.
+    ## ---------------------------------------------------------------------------------------------------------------
+    #foreach($uix in $services.uix.getExtensions("org.xwiki.platform.html.head", {'sortByParameter' : 'order'}))
+      $services.rendering.render($uix.execute(), 'xhtml/1.0')
+    #end
+    ## ---------------------------------------------------------------------------------------------------------------
     ## Hook for inserting Link extensions. This will be replaced with the pulled link references.
     ## ---------------------------------------------------------------------------------------------------------------
     <!-- com.xpn.xwiki.plugin.skinx.LinkExtensionPlugin -->
