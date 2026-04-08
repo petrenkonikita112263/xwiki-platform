@@ -17,17 +17,18 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.xwiki.export.pdf.internal;
+package org.xwiki.skinx;
 
 import org.xwiki.component.annotation.Role;
+import org.xwiki.stability.Unstable;
 
 /**
  * Used to record the skin extensions (JavaScript, CSS) required while rendering some content.
  * 
  * @version $Id$
- * @since 14.4.2
- * @since 14.5
+ * @since 18.3.0RC1
  */
+@Unstable
 @Role
 public interface RequiredSkinExtensionsRecorder
 {

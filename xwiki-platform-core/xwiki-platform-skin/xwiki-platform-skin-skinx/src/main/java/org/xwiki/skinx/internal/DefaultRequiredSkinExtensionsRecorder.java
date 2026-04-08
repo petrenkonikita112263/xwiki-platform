@@ -17,10 +17,9 @@
  * Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA, or see the FSF site: http://www.fsf.org.
  */
-package org.xwiki.export.pdf.internal;
+package org.xwiki.skinx.internal;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -34,6 +33,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.xwiki.component.annotation.Component;
 import org.xwiki.component.annotation.InstantiationStrategy;
 import org.xwiki.component.descriptor.ComponentInstantiationStrategy;
+import org.xwiki.skinx.RequiredSkinExtensionsRecorder;
 
 import com.xpn.xwiki.XWikiContext;
 import com.xpn.xwiki.api.Api;
@@ -51,7 +51,7 @@ import com.xpn.xwiki.plugin.skinx.SkinExtensionPluginApi;
 public class DefaultRequiredSkinExtensionsRecorder implements RequiredSkinExtensionsRecorder
 {
     private static final List<String> SKIN_EXTENSION_PLUGINS =
-        Arrays.asList("ssrx", "ssfx", "ssx", "linkx", "jsrx", "jsfx", "jsx");
+        List.of("ssrx", "ssfx", "ssx", "linkx", "jsrx", "jsfx", "jsx");
 
     private final Map<String, String> requiredSkinExtensionsMap = new LinkedHashMap<>();
 
@@ -79,7 +79,7 @@ public class DefaultRequiredSkinExtensionsRecorder implements RequiredSkinExtens
             // extensions are not always at the end of the import string.
             String[] alwaysUsed = StringUtils.split(entry.getValue(), '\n');
             String[] allAfter = StringUtils.split(getImportString(entry.getKey()), '\n');
-            Set<String> allAfterSet = new LinkedHashSet<>(Arrays.asList(allAfter));
+            Set<String> allAfterSet = new LinkedHashSet<>(List.of(allAfter));
             for (String always : alwaysUsed) {
                 allAfterSet.remove(always);
             }
