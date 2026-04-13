@@ -210,7 +210,7 @@ public class DatabaseMailStatusStore implements MailStatusStore
         try {
             store.executeWrite(xwikiContext, session -> {
                 // Delete the message
-                String queryString = String.format("delete from %s where mail_id=:id", MailStatus.class.getName());
+                String queryString = String.format("delete from %s where messageId=:id", MailStatus.class.getName());
                 session.createQuery(queryString).setParameter(ID_PARAMETER_NAME, uniqueMessageId).executeUpdate();
                 return null;
             });
