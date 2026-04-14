@@ -225,7 +225,7 @@ Object.extend(XWiki, {
         }
         // Include the document revision when viewing a specific revision, so the loaded tab content reflects the
         // correct document state (e.g., attachments at revision 1.1 instead of the current version).
-        const rev = new URLSearchParams(window.location.search).get('rev');
+        const rev = new URLSearchParams(globalThis.location.search).get('rev');
         if (rev) {
           parameters.append('rev', rev);
         }
