@@ -272,6 +272,11 @@
   })
 #if ("$!{request.rev}" != '')
   #set ($discard = $liveDataSourceConfig.put('rev', $request.rev))
+## Disable sorting and filtering since it's not implemented
+#foreach ($descriptor in $liveDataConfig.meta.propertyDescriptors)
+  #set ($discard = $descriptor.put('sortable', false))
+  #set ($discard = $descriptor.put('filterable', false))
+#end
 #end
 #set ($sourceParameters = $escapetool.url($liveDataSourceConfig))
 {{liveData
