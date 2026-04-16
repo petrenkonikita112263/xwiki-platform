@@ -273,14 +273,15 @@ public class EditIT
         setup.getDriver()
             .executeJavascript("XWiki.widgets.Notification.prototype.defaultOptions.done.timeout = 30");
 
-        // For new timeouts to be taken into account we need to reset the listeners:
-        // first we stop observing save event, it will remove the existing listeners
+        // For new timeouts to be taken into account, we need to reset the listeners.
+        // First, we stop observing the save event, and that removes the existing listeners
         setup.getDriver()
             .executeJavascript("document.stopObserving('xwiki:actions:save')");
-        // then we create back the AjaxSaveAndContinue instance with the right timeout, and also override
+        // Then, we create back the AjaxSaveAndContinue instance with the right timeout, and also override
         // maybeRedirect to prevent actual page navigation so we can check the UI state after save.
         // Note: Firefox 125+ only shows the beforeunload dialog for synchronous user-gesture-triggered
-        // navigation, not for async AJAX-triggered navigation, so the beforeunload dialog approach is unreliable.
+        // navigation, not for async AJAX-triggered navigation, so the beforeunload dialog approach is unreliable,
+        // which is why we cannot use it here (FTR we used to use it).
         setup.getDriver().executeJavascript(
             "var saveAndContinue = new XWiki.actionButtons.AjaxSaveAndContinue();"
                 + "saveAndContinue.maybeRedirect = function(isContinue) { return true; };");
