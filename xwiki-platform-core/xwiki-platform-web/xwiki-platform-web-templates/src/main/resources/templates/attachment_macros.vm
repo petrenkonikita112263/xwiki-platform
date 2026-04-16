@@ -273,7 +273,7 @@
           { 'id': 'filesize', 'displayer': 'html' },
           { 'id': 'date', 'filter': 'date'},
           { 'id': 'author', 'displayer': 'html' },
-          { 'id': 'actions', 'displayer': 'html' }
+          { 'id': 'actions', 'displayer': 'html', 'sortable': false, 'filterable': false }
         ],
         'entryDescriptor': {
           'idProperty': 'id'
