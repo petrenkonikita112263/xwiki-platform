@@ -232,7 +232,7 @@
               <directory>${project.build.directory}/maven-shared-archive-resources/META-INF</directory>
               <targetPath>META-INF</targetPath>
             </resource>
-            <!-- Include version.properties file -->
+            <!-- Include resources in which to resolve variables -->
             <resource>
               <directory>${basedir}/src/main/filteredResources</directory>
               <targetPath />

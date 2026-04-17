@@ -324,12 +324,6 @@
             <data>
               <type>link</type>
               <symlink>true</symlink>
-              <linkName>/usr/lib/xwiki/WEB-INF/version.properties</linkName>
-              <linkTarget>/etc/xwiki/version.properties</linkTarget>
-            </data>
-            <data>
-              <type>link</type>
-              <symlink>true</symlink>
               <linkName>/usr/lib/xwiki/WEB-INF/web.xml</linkName>
               <linkTarget>/etc/xwiki/web.xml</linkTarget>
             </data>
